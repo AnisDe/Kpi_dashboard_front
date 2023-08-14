@@ -8,9 +8,8 @@ describe('ConnectFormComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      declarations: [ ConnectFormComponent ]
-    })
-    .compileComponents();
+      declarations: [ConnectFormComponent],
+    }).compileComponents();
 
     fixture = TestBed.createComponent(ConnectFormComponent);
     component = fixture.componentInstance;

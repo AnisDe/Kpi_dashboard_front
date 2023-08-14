@@ -1,0 +1,102 @@
+<div class="container">
+  <h1>Connection Form</h1>
+  <select [(ngModel)]="selectedDatabaseType">
+    <option value="mongodb">MongoDB</option>
+    <option value="postgresql">PostgreSQL</option>
+  </select>
+  <form (ngSubmit)="onConnect()" #connectForm="ngForm">
+    <label>
+      Database URL:
+      <input type="text" [(ngModel)]="url" name="url" required />
+    </label>
+    <label>
+      Username:
+      <input type="text" [(ngModel)]="username" name="username" required />
+    </label>
+    <label>
+      Password:
+      <input type="password" [(ngModel)]="password" name="password" required />
+    </label>
+    <button type="submit" [disabled]="loading">Connect</button>
+  </form>
+
+  <div *ngIf="loading" class="loading">Connecting...</div>
+  <div *ngIf="error" class="error">{{ error }}</div>
+
+  <table *ngIf="result" class="table" border="1">
+    <thead>
+      <tr>
+        <th>Table Name</th>
+        <th>Column Name</th>
+        <th>Column Type</th>
+        <th>Column Values</th>
+      </tr>
+    </thead>
+    <tbody>
+      <ng-container *ngFor="let tableName of getTableNames(result)">
+        <ng-container
+          *ngFor="let columnName of getTableNames(result[tableName])"
+        >
+          <tr>
+            <td>{{ tableName }}</td>
+            <td>{{ columnName }}</td>
+            <td>{{ getColumnType(result[tableName][columnName]) }}</td>
+            <td>
+              <select>
+                <option
+                  *ngFor="
+                    let value of getColumnValues(result[tableName][columnName])
+                  "
+                >
+                  {{ value }}
+                </option>
+              </select>
+            </td>
+          </tr>
+        </ng-container>
+      </ng-container>
+    </tbody>
+  </table>
+</div>
+<div *ngIf="result">
+  <div class="queryBuilderContainer">
+    <div>
+      <div *ngIf="queryBuilderConfig">
+        <query-builder
+          [(ngModel)]="query"
+          [config]="config"
+          (change)="onQueryChange()"
+        ></query-builder>
+      </div>
+    </div>
+  </div>
+
+  <label for="yAxisInput">Y-Axis Column Name:</label>
+  <select [(ngModel)]="yAxisColumnName" (change)="toggleYAxisColumn()">
+    <ng-container *ngIf="result">
+      <ng-container *ngFor="let tableName of getTableNames(result)">
+        <ng-container
+          *ngFor="let columnName of getTableNames(result[tableName])"
+        >
+          <option>{{ columnName }}</option>
+        </ng-container>
+      </ng-container>
+    </ng-container>
+  </select>
+  <div *ngIf="result">
+    <label for="xAxisInput">X-Axis Column Name:</label>
+    <select [(ngModel)]="xAxisColumnName" (change)="toggleXAxisColumn()">
+      <ng-container *ngIf="result">
+        <ng-container *ngFor="let tableName of getTableNames(result)">
+          <ng-container
+            *ngFor="let columnName of getTableNames(result[tableName])"
+          >
+            <option>{{ columnName }}</option>
+          </ng-container>
+        </ng-container>
+      </ng-container>
+    </select>
+  </div>
+</div>
+
+<canvas id="myChart"></canvas>
