@@ -71,18 +71,27 @@
     </div>
   </div>
 
-  <label for="yAxisInput">Y-Axis Column Name:</label>
-  <select [(ngModel)]="yAxisColumnName" (change)="toggleYAxisColumn()">
-    <ng-container *ngIf="result">
-      <ng-container *ngFor="let tableName of getTableNames(result)">
-        <ng-container
-          *ngFor="let columnName of getTableNames(result[tableName])"
-        >
-          <option>{{ columnName }}</option>
+  <div *ngFor="let yAxisArray of yAxisColumnNamesArrays; let i = index">
+    <label for="yAxisInput{{ i }}">Y-Axis Column Name {{ i + 1 }}:</label>
+    <select
+      [(ngModel)]="yAxisArray[0]"
+      (change)="toggleYAxisColumn()"
+      id="yAxisInput{{ i }}"
+    >
+      <ng-container *ngIf="result">
+        <ng-container *ngFor="let tableName of getTableNames(result)">
+          <ng-container
+            *ngFor="let columnName of getTableNames(result[tableName])"
+          >
+            <option>{{ columnName }}</option>
+          </ng-container>
         </ng-container>
       </ng-container>
-    </ng-container>
-  </select>
+    </select>
+    <button *ngIf="i === 0" (click)="addYAxisInput()">+</button>
+    <button *ngIf="i > 0" (click)="removeYAxisInput(i)">-</button>
+  </div>
+
   <div *ngIf="result">
     <label for="xAxisInput">X-Axis Column Name:</label>
     <select [(ngModel)]="xAxisColumnName" (change)="toggleXAxisColumn()">

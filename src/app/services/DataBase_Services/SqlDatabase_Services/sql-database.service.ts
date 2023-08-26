@@ -10,10 +10,71 @@ export class SqlDatabaseService {
 
   constructor(private http: HttpClient) {}
 
-  connect(url: string, username: string, password: string): Observable<any> {
-    const body = { url, username, password };
-    const urlEndpoint = `${this.baseUrl}/connect`;
-    return this.http.post<any>(urlEndpoint, body);
+  convertToSQL(
+    tableNames: string[],
+    query: { condition: string; rules: any[] }
+  ): string {
+    let sqlQueries = [];
+    console.log(query);
+    for (const tableName of tableNames) {
+      let sqlQuery = `SELECT * FROM "${tableName}"`;
+
+      if (query.rules.length > 0) {
+        let conditions = query.rules
+          .map((rule) => this.generateCondition(rule))
+          .join(` ${query.condition.toUpperCase()} `);
+        sqlQuery += ` WHERE ${conditions}`;
+      }
+
+      sqlQueries.push(sqlQuery);
+    }
+
+    return sqlQueries.join('; ');
+  }
+
+  generateCondition(rule: any): string {
+    if (rule.condition && rule.rules && rule.rules.length > 0) {
+      let conditions = rule.rules
+        .map((subRule: any) => this.generateCondition(subRule))
+        .join(` ${rule.condition.toUpperCase()} `);
+      return `(${conditions})`;
+    } else {
+      const field = `"${rule.field}"`;
+      const operator = rule.operator;
+      const value = rule.value;
+
+      let condition = '';
+
+      if (operator === 'equals') {
+        condition = `${field} = ${this.formatValue(value)}`;
+      } else if (operator === 'notEquals') {
+        condition = `${field} <> ${this.formatValue(value)}`;
+      } else if (operator === 'lessThan') {
+        condition = `${field} < ${this.formatValue(value)}`;
+      } else if (operator === 'lessThanOrEqual') {
+        condition = `${field} <= ${this.formatValue(value)}`;
+      } else if (operator === 'greaterThan') {
+        condition = `${field} > ${this.formatValue(value)}`;
+      } else if (operator === 'greaterThanOrEqual') {
+        condition = `${field} >= ${this.formatValue(value)}`;
+      } else if (operator === 'contains') {
+        condition = `${field} LIKE '%${value}%'`;
+      } else if (operator === 'notContains') {
+        condition = `${field} NOT LIKE '%${value}%'`;
+      }
+
+      return condition;
+    }
+  }
+
+  formatValue(value: any): string {
+    if (typeof value === 'string') {
+      return `'${value}'`;
+    } else if (typeof value === 'boolean') {
+      return value ? 'TRUE' : 'FALSE';
+    } else {
+      return value.toString();
+    }
   }
 
   executeSQL(query: string) {

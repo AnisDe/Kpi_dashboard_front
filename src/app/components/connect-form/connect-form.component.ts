@@ -6,6 +6,8 @@ import { interval, min } from 'rxjs';
 import { Observable } from 'rxjs';
 
 import Chart from 'chart.js/auto';
+import { QueryBuilderService } from 'src/app/services/QueryBuilder_Services/query-builder.service';
+import { HttpClient } from '@angular/common/http';
 
 interface Metadata {
   [key: string]: { [key: string]: any[] };
@@ -19,6 +21,7 @@ interface Metadata {
 export class ConnectFormComponent implements OnInit {
   url = '';
   username = '';
+  connectionString = '';
   databaseService: any;
   password = '';
   loading = false;
@@ -26,6 +29,8 @@ export class ConnectFormComponent implements OnInit {
   error: string | null = null;
   xAxisColumnName: string = '';
   yAxisColumnName: string = '';
+  yAxisColumnNamesArrays: string[][] = [[]];
+  private baseUrl = 'http://localhost:9090/tables';
 
   queryBuilderConfig!: QueryBuilderConfig;
   query: any = {
@@ -41,7 +46,9 @@ export class ConnectFormComponent implements OnInit {
   columnNames: string[] = [];
   constructor(
     private sqlDatabaseService: SqlDatabaseService,
-    private mongodbDatabaseService: MongoDatabaseService
+    private mongodbDatabaseService: MongoDatabaseService,
+    private queryBuilderService: QueryBuilderService,
+    private http: HttpClient
   ) {}
 
   ngOnInit(): void {
@@ -51,6 +58,23 @@ export class ConnectFormComponent implements OnInit {
     // interval(10000).subscribe(() => {
     //   this.refreshData();
     // });
+  }
+  addYAxisInput(): void {
+    this.yAxisColumnNamesArrays.push(['']);
+  }
+
+  removeYAxisInput(index: number): void {
+    const canvas = document.getElementById('myChart') as HTMLCanvasElement;
+    const existingChart = Chart.getChart(canvas);
+    if (existingChart) {
+      existingChart.destroy();
+    }
+    this.yAxisColumnNamesArrays.splice(index, 1);
+    this.convertToChartData();
+  }
+
+  updateYAxisArray(selectedValue: string, index: number): void {
+    this.yAxisColumnNamesArrays[index][0] = selectedValue;
   }
 
   onConnect(): void {
@@ -75,27 +99,30 @@ export class ConnectFormComponent implements OnInit {
       console.error('Selected database service is undefined.');
       return;
     }
-    this.databaseService
-      .connect(this.url, this.username, this.password)
-      .subscribe(
-        (data: Metadata) => {
-          this.loading = false;
-          this.result = data;
-          this.setFields(data);
-        },
-        (error: { message: string | null }) => {
-          console.error('Connect failed!', error);
-          this.loading = false;
-          this.error = error.message;
-        }
-      );
+    this.connect(this.url, this.username, this.password).subscribe(
+      (data: Metadata) => {
+        this.loading = false;
+        this.connectionString = this.url;
+        this.result = data;
+        this.setFields(data);
+      },
+      (error: { message: string | null }) => {
+        console.error('Connect failed!', error);
+        this.loading = false;
+        this.error = error.message;
+      }
+    );
   }
-
+  connect(url: string, username: string, password: string): Observable<any> {
+    const body = { url, username, password };
+    const urlEndpoint = `${this.baseUrl}/connect`;
+    return this.http.post<any>(urlEndpoint, body);
+  }
   refreshData(): void {
     if (!this.url || !this.username) {
       return;
     }
-    this.sqlDatabaseService
+    this.databaseService
       .connect(this.url, this.username, this.password)
       .subscribe(
         (data: Metadata) => {
@@ -103,7 +130,7 @@ export class ConnectFormComponent implements OnInit {
           this.setFields(data);
           console.log('Data refreshed');
         },
-        (error) => {
+        (error: { message: string | null }) => {
           console.error('Connect failed!', error);
           this.error = error.message;
         }
@@ -113,6 +140,8 @@ export class ConnectFormComponent implements OnInit {
   onQueryChange() {
     this.convertToChartData();
     console.log(this.yAxisColumnName);
+    console.log('URLLLL', this.connectionString);
+    console.log('YYYYYYYYYY', this.yAxisColumnNamesArrays);
     // Check if the field and value exist in the result
     // if (!this.isDataValid(field, value)) {
     //   console.log('Field or value does not exist in the result.');
@@ -129,6 +158,7 @@ export class ConnectFormComponent implements OnInit {
   ): Promise<any[]> {
     return new Promise<any[]>((resolve) => {
       response.subscribe((data) => {
+        console.log('DATAAAAAA', data);
         const variableValues = data.map((item) => item[variableName]);
         console.log('selectVariableValues', variableValues);
         resolve(variableValues);
@@ -137,9 +167,29 @@ export class ConnectFormComponent implements OnInit {
   }
 
   convertToChartData(): void {
-    const sqlQuery = this.convertToSQL(this.tableNames, this.query);
-    const response = this.sqlDatabaseService.executeSQL(sqlQuery);
-    console.log('RESPONSE', response);
+    let response: Observable<any>;
+
+    if (this.selectedDatabaseType === 'mongodb') {
+      const mongoQuery = this.mongodbDatabaseService.convertRuleToMongoQuery(
+        this.query,
+        this.tableNames
+      );
+      console.log(mongoQuery);
+      response = this.mongodbDatabaseService.executeQuery(
+        this.connectionString,
+        mongoQuery
+      );
+    } else if (this.selectedDatabaseType === 'postgresql') {
+      const sqlQuery = this.sqlDatabaseService.convertToSQL(
+        this.tableNames,
+        this.query
+      );
+
+      response = this.sqlDatabaseService.executeSQL(sqlQuery);
+    } else {
+      console.error('Invalid selectedDatabaseType:', this.selectedDatabaseType);
+      return;
+    }
 
     response.subscribe(
       async (data) => {
@@ -157,46 +207,60 @@ export class ConnectFormComponent implements OnInit {
           return;
         }
 
-        // Destroy existing chart if it exists
         const existingChart = Chart.getChart(canvas);
         if (existingChart) {
           existingChart.destroy();
         }
 
-        const yAxisColumnNameValues = await this.selectVariableValues(
-          response,
-          this.yAxisColumnName
-        );
+        const labels = Array.from([], () => '');
+        const datasets = [];
+
+        // Fetch x-axis values
         const xAxisColumnNameValues = await this.selectVariableValues(
           response,
           this.xAxisColumnName
         );
-        const dataPoints = [];
 
-        // Loop through the x and y arrays and create data objects
-        for (
-          let i = 0;
-          i < xAxisColumnNameValues.length && i < yAxisColumnNameValues.length;
-          i++
-        ) {
-          dataPoints.push({
-            x: xAxisColumnNameValues[i].toString(),
-            y: yAxisColumnNameValues[i],
+        for (const yAxisColumnNames of this.yAxisColumnNamesArrays) {
+          const yAxisColumnName = yAxisColumnNames[0]; // Assuming only one column is used
+          const yAxisColumnNameValues = await this.selectVariableValues(
+            response,
+            yAxisColumnName
+          );
+
+          const dataPoints = [];
+          for (
+            let i = 0;
+            i < xAxisColumnNameValues.length &&
+            i < yAxisColumnNameValues.length;
+            i++
+          ) {
+            dataPoints.push({
+              x: xAxisColumnNameValues[i].toString(),
+              y: yAxisColumnNameValues[i],
+            });
+          }
+
+          datasets.push({
+            label: yAxisColumnNames.join(', '),
+            data: dataPoints,
+            backgroundColor: this.getRandomColor(),
+            beginAtZero: true,
           });
         }
-        console.log(dataPoints);
-        const labels = Array.from({ length: 62 }, () => '');
+
         new Chart(ctx, {
-          type: 'line', // Change the chart type as per your requirement
+          type: 'line',
           data: {
             labels: labels,
-            datasets: [
-              {
-                label: this.yAxisColumnName,
-                data: dataPoints,
-                backgroundColor: 'rgba(0, 123, 255, 0.5)',
+            datasets: datasets,
+          },
+          options: {
+            scales: {
+              x: {
+                reverse: false,
               },
-            ],
+            },
           },
         });
       },
@@ -205,8 +269,47 @@ export class ConnectFormComponent implements OnInit {
       }
     );
   }
-
+  getRandomColor(): string {
+    const letters = '0123456789ABCDEF';
+    let color = '#';
+    for (let i = 0; i < 6; i++) {
+      color += letters[Math.floor(Math.random() * 16)];
+    }
+    return color;
+  }
   setFields(metadata: Metadata): void {
+    if (this.selectedDatabaseType === 'mongodb') {
+      this.setFieldsForMongoDB(metadata);
+    } else if (this.selectedDatabaseType === 'postgresql') {
+      this.setFieldsForPostgreSQL(metadata);
+    } else {
+      console.error('Invalid database type selected.');
+    }
+  }
+
+  setFieldsForMongoDB(metadata: Metadata): void {
+    const { fields: queryBuilderConfigFields } = this.config;
+
+    for (const [tableName, table] of Object.entries(metadata)) {
+      const columns = this.getTableNames(table);
+      this.tableNames.push(tableName); // Add tableName to the tableNames array
+      columns.forEach((column: string) => {
+        const columnData = table[column];
+        const columnType = this.getColumnType(columnData);
+        const field: Field = {
+          name: column,
+          type: this.databaseService.getCollectionTypeValue(columnType),
+          operators: this.queryBuilderService.getOperatorsForFieldType(
+            this.databaseService.getCollectionTypeValue(columnType)
+          ),
+        };
+        queryBuilderConfigFields[column] = field;
+        this.columnNames.push(column); // Add column to the columnNames array
+      });
+    }
+  }
+
+  private setFieldsForPostgreSQL(metadata: Metadata): void {
     const { fields: queryBuilderConfigFields } = this.config;
 
     for (const [tableName, table] of Object.entries(metadata)) {
@@ -218,13 +321,11 @@ export class ConnectFormComponent implements OnInit {
         const columnType = this.getColumnType(columnData);
         const field: Field = {
           name: column,
-          type: this.sqlDatabaseService.mapPostgresTypeToQueryBuilderType(
+          type: this.databaseService.mapPostgresTypeToQueryBuilderType(
             columnType
           ),
-          operators: this.getOperatorsForFieldType(
-            this.sqlDatabaseService.mapPostgresTypeToQueryBuilderType(
-              columnType
-            )
+          operators: this.queryBuilderService.getOperatorsForFieldType(
+            this.databaseService.mapPostgresTypeToQueryBuilderType(columnType)
           ),
         };
         queryBuilderConfigFields[column] = field;
@@ -232,55 +333,35 @@ export class ConnectFormComponent implements OnInit {
       });
     }
   }
-
-  getTableNames(data: any): string[] {
-    return Object.keys(data);
-  }
-
-  getAllFields(condition: { field: any; rules: any[] }) {
-    let fields: any[] = [];
-
-    if (condition.field) {
-      fields.push(condition.field);
-    }
-
-    if (condition.rules && Array.isArray(condition.rules)) {
-      condition.rules.forEach((rule: { field: any; rules: any }) => {
-        if (rule.field) {
-          fields.push(rule.field);
-        }
-
-        if (rule.rules && Array.isArray(rule.rules)) {
-          fields = fields.concat(this.getAllFields(rule));
-        }
-      });
-    }
-
-    return fields;
-  }
-  toggleYAxisColumn() {
-    this.convertToChartData();
-  }
-  toggleXAxisColumn() {
-    this.convertToChartData();
-  }
-
   getColumnType(columnType: any): string {
     if (Array.isArray(columnType)) {
-      return columnType.length > 0
-        ? this.getColumnTypeValue(columnType[0])
-        : 'unknown';
+      return columnType.length > 0 ? columnType[0] : 'unknown';
     } else if (columnType && typeof columnType === 'object') {
       if (columnType.hasOwnProperty('columnType')) {
-        return this.getColumnTypeValue(columnType.columnType);
+        return this.getColumnType(columnType.columnType);
+      } else if (columnType.hasOwnProperty('fieldType')) {
+        return this.getColumnType(columnType.fieldType);
       } else if (columnType.hasOwnProperty('dataType')) {
         return columnType.dataType.toLowerCase();
       } else {
         return 'unknown';
       }
+    } else if (typeof columnType === 'string') {
+      return columnType;
     } else {
       return 'unknown';
     }
+  }
+
+  getTableNames(data: any): string[] {
+    return Object.keys(data);
+  }
+
+  toggleYAxisColumn() {
+    this.convertToChartData();
+  }
+  toggleXAxisColumn() {
+    this.convertToChartData();
   }
 
   getColumnValues(columnType: any): any[] {
@@ -289,69 +370,11 @@ export class ConnectFormComponent implements OnInit {
     } else if (columnType && typeof columnType === 'object') {
       return columnType.hasOwnProperty('columnValues')
         ? columnType.columnValues
+        : columnType.hasOwnProperty('fieldValues')
+        ? columnType.fieldValues
         : [];
     } else {
       return [];
-    }
-  }
-
-  getCollectionType(columnType: any): string {
-    console.log(columnType);
-    if (Array.isArray(columnType.fieldType)) {
-      console.log('first');
-      return columnType.fieldType.length > 0
-        ? this.mongodbDatabaseService.getCollectionTypeValue(
-            columnType.fieldType[0]
-          )
-        : 'unknown';
-    } else if (columnType && typeof columnType === 'object') {
-      if (columnType.hasOwnProperty('fieldType')) {
-        return this.mongodbDatabaseService.getCollectionTypeValue(
-          columnType.fieldType
-        );
-      } else if (columnType.hasOwnProperty('dataType')) {
-        return this.mongodbDatabaseService.getCollectionTypeValue(
-          columnType.dataType.toLowerCase()
-        );
-      } else {
-        return 'unknown';
-      }
-    } else if (typeof columnType === 'string') {
-      return this.mongodbDatabaseService.getCollectionTypeValue(
-        columnType.toLowerCase()
-      );
-    } else {
-      return 'unknown';
-    }
-  }
-
-  getColumnTypeValue(type: any): string {
-    if (typeof type === 'string') {
-      return type;
-    } else if (Array.isArray(type)) {
-      return type.length > 0 ? type[0] : 'unknown';
-    } else {
-      return 'unknown';
-    }
-  }
-
-  getOperatorsForFieldType(fieldType: string): string[] {
-    switch (fieldType) {
-      case 'string':
-        return ['equals', 'notEquals', 'contains', 'notContains'];
-      case 'number':
-      case 'decimal':
-        return ['equals', 'notEquals', 'lessThan', 'greaterThan'];
-      case 'boolean':
-        return ['equals'];
-      case 'date':
-        return ['equals', 'notEquals', 'lessThan', 'greaterThan'];
-      case 'time':
-        return ['equals', 'notEquals', 'before', 'after'];
-      case 'datetime':
-        return ['equals', 'notEquals', 'before', 'after'];
-      default:
-        return [];
     }
   }
 
@@ -383,71 +406,5 @@ export class ConnectFormComponent implements OnInit {
     }
 
     return false;
-  }
-  convertToSQL(
-    tableNames: string[],
-    query: { condition: string; rules: any[] }
-  ): string {
-    let sqlQueries = [];
-
-    for (const tableName of tableNames) {
-      let sqlQuery = `SELECT * FROM "${tableName}"`;
-
-      if (query.rules.length > 0) {
-        let conditions = query.rules
-          .map((rule) => this.generateCondition(rule))
-          .join(` ${query.condition.toUpperCase()} `);
-        sqlQuery += ` WHERE ${conditions}`;
-      }
-
-      sqlQueries.push(sqlQuery);
-    }
-
-    return sqlQueries.join('; ');
-  }
-
-  generateCondition(rule: any): string {
-    if (rule.condition && rule.rules && rule.rules.length > 0) {
-      let conditions = rule.rules
-        .map((subRule: any) => this.generateCondition(subRule))
-        .join(` ${rule.condition.toUpperCase()} `);
-      return `(${conditions})`;
-    } else {
-      const field = `"${rule.field}"`;
-      const operator = rule.operator;
-      const value = rule.value;
-
-      let condition = '';
-
-      if (operator === 'equals') {
-        condition = `${field} = ${this.formatValue(value)}`;
-      } else if (operator === 'notEquals') {
-        condition = `${field} <> ${this.formatValue(value)}`;
-      } else if (operator === 'lessThan') {
-        condition = `${field} < ${this.formatValue(value)}`;
-      } else if (operator === 'lessThanOrEqual') {
-        condition = `${field} <= ${this.formatValue(value)}`;
-      } else if (operator === 'greaterThan') {
-        condition = `${field} > ${this.formatValue(value)}`;
-      } else if (operator === 'greaterThanOrEqual') {
-        condition = `${field} >= ${this.formatValue(value)}`;
-      } else if (operator === 'contains') {
-        condition = `${field} LIKE '%${value}%'`;
-      } else if (operator === 'notContains') {
-        condition = `${field} NOT LIKE '%${value}%'`;
-      }
-
-      return condition;
-    }
-  }
-
-  formatValue(value: any): string {
-    if (typeof value === 'string') {
-      return `'${value}'`;
-    } else if (typeof value === 'boolean') {
-      return value ? 'TRUE' : 'FALSE';
-    } else {
-      return value.toString();
-    }
   }
 }
