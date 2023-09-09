@@ -1,10 +1,21 @@
 <div class="container">
+  <button (click)="logout()">Logout</button>
+
   <h1>Connection Form</h1>
   <select [(ngModel)]="selectedDatabaseType">
     <option value="mongodb">MongoDB</option>
     <option value="postgresql">PostgreSQL</option>
   </select>
   <form (ngSubmit)="onConnect()" #connectForm="ngForm">
+    <label>
+      Database Name:
+      <input
+        type="text"
+        [(ngModel)]="databaseName"
+        name="databaseName"
+        required
+      />
+    </label>
     <label>
       Database URL:
       <input type="text" [(ngModel)]="url" name="url" required />
@@ -60,22 +71,26 @@
 </div>
 <div *ngIf="result">
   <div class="queryBuilderContainer">
-    <div>
-      <div *ngIf="queryBuilderConfig">
-        <query-builder
-          [(ngModel)]="query"
-          [config]="config"
-          (change)="onQueryChange()"
-        ></query-builder>
+    <div *ngFor="let queryBuilder of queryBuilders; let i = index">
+      <div>
+        <div *ngIf="queryBuilder.config">
+          <query-builder
+            [(ngModel)]="queryBuilder.query"
+            [config]="queryBuilder.config"
+            (change)="onQueryChange(i)"
+          ></query-builder>
+          <button (click)="removeQueryBuilder(i)">Remove</button>
+        </div>
       </div>
     </div>
+    <button (click)="addQueryBuilder()">Add Query Builder</button>
   </div>
 
   <div *ngFor="let yAxisArray of yAxisColumnNamesArrays; let i = index">
     <label for="yAxisInput{{ i }}">Y-Axis Column Name {{ i + 1 }}:</label>
     <select
       [(ngModel)]="yAxisArray[0]"
-      (change)="toggleYAxisColumn()"
+      (change)="toggleYAxisColumn(i)"
       id="yAxisInput{{ i }}"
     >
       <ng-container *ngIf="result">

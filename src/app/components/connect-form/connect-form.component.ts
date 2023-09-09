@@ -8,7 +8,7 @@ import { Observable } from 'rxjs';
 import Chart from 'chart.js/auto';
 import { QueryBuilderService } from 'src/app/services/QueryBuilder_Services/query-builder.service';
 import { HttpClient } from '@angular/common/http';
-
+import { KeycloakService } from 'keycloak-angular';
 interface Metadata {
   [key: string]: { [key: string]: any[] };
 }
@@ -19,6 +19,7 @@ interface Metadata {
   styleUrls: ['connect-form.component.css'],
 })
 export class ConnectFormComponent implements OnInit {
+  databaseName = '';
   url = '';
   username = '';
   connectionString = '';
@@ -31,7 +32,6 @@ export class ConnectFormComponent implements OnInit {
   yAxisColumnName: string = '';
   yAxisColumnNamesArrays: string[][] = [[]];
   private baseUrl = 'http://localhost:9090/tables';
-
   queryBuilderConfig!: QueryBuilderConfig;
   query: any = {
     condition: 'and',
@@ -42,12 +42,28 @@ export class ConnectFormComponent implements OnInit {
   config: QueryBuilderConfig = {
     fields: {},
   };
+
+  addQueryBuilder(): void {
+    this.queryBuilders.push({
+      config: this.config,
+      query: { condition: 'and', rules: [] },
+    });
+  }
+
+  removeQueryBuilder(index: number): void {
+    this.queryBuilders.splice(index, 1);
+    this.convertToChartData();
+  }
+  queryBuilders: { config: QueryBuilderConfig; query: any }[] = [
+    { config: this.config, query: this.query }, // Initial query builder
+  ];
   tableNames: string[] = []; // Declaring tableNames as a class property
   columnNames: string[] = [];
   constructor(
     private sqlDatabaseService: SqlDatabaseService,
     private mongodbDatabaseService: MongoDatabaseService,
     private queryBuilderService: QueryBuilderService,
+    private keycloakService: KeycloakService,
     private http: HttpClient
   ) {}
 
@@ -62,7 +78,9 @@ export class ConnectFormComponent implements OnInit {
   addYAxisInput(): void {
     this.yAxisColumnNamesArrays.push(['']);
   }
-
+  logout() {
+    this.keycloakService.logout('http://localhost:4200/');
+  }
   removeYAxisInput(index: number): void {
     const canvas = document.getElementById('myChart') as HTMLCanvasElement;
     const existingChart = Chart.getChart(canvas);
@@ -114,7 +132,15 @@ export class ConnectFormComponent implements OnInit {
     );
   }
   connect(url: string, username: string, password: string): Observable<any> {
-    const body = { url, username, password };
+    const databaseName = this.databaseName;
+    const selectedDatabaseType = this.selectedDatabaseType;
+    const body = {
+      databaseName,
+      selectedDatabaseType,
+      url,
+      username,
+      password,
+    };
     const urlEndpoint = `${this.baseUrl}/connect`;
     return this.http.post<any>(urlEndpoint, body);
   }
@@ -137,7 +163,7 @@ export class ConnectFormComponent implements OnInit {
       );
   }
 
-  onQueryChange() {
+  onQueryChange(index: number) {
     this.convertToChartData();
     console.log(this.yAxisColumnName);
     console.log('URLLLL', this.connectionString);
@@ -167,108 +193,160 @@ export class ConnectFormComponent implements OnInit {
   }
 
   convertToChartData(): void {
-    let response: Observable<any>;
-
-    if (this.selectedDatabaseType === 'mongodb') {
-      const mongoQuery = this.mongodbDatabaseService.convertRuleToMongoQuery(
-        this.query,
-        this.tableNames
-      );
-      console.log(mongoQuery);
-      response = this.mongodbDatabaseService.executeQuery(
-        this.connectionString,
-        mongoQuery
-      );
-    } else if (this.selectedDatabaseType === 'postgresql') {
-      const sqlQuery = this.sqlDatabaseService.convertToSQL(
-        this.tableNames,
-        this.query
-      );
-
-      response = this.sqlDatabaseService.executeSQL(sqlQuery);
-    } else {
-      console.error('Invalid selectedDatabaseType:', this.selectedDatabaseType);
+    const canvas = document.getElementById(
+      'myChart'
+    ) as HTMLCanvasElement | null;
+    if (!canvas) {
+      console.error('Chart canvas element not found.');
       return;
     }
 
-    response.subscribe(
-      async (data) => {
-        const canvas = document.getElementById(
-          'myChart'
-        ) as HTMLCanvasElement | null;
-        if (!canvas) {
-          console.error('Chart canvas element not found.');
-          return;
-        }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      console.error('Failed to get 2D context for chart canvas.');
+      return;
+    }
 
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          console.error('Failed to get 2D context for chart canvas.');
-          return;
-        }
+    const existingChart = Chart.getChart(canvas);
+    if (existingChart) {
+      existingChart.destroy();
+    }
 
-        const existingChart = Chart.getChart(canvas);
-        if (existingChart) {
-          existingChart.destroy();
-        }
+    const labels = Array.from([], () => '');
 
-        const labels = Array.from([], () => '');
-        const datasets = [];
+    // Initialize the datasets array to hold all datasets from all query builders
+    const allDatasets: {
+      label: string;
+      data: { x: any; y: any }[];
+      backgroundColor: string;
+      beginAtZero: boolean;
+    }[] = [];
 
-        // Fetch x-axis values
-        const xAxisColumnNameValues = await this.selectVariableValues(
-          response,
-          this.xAxisColumnName
-        );
-
-        for (const yAxisColumnNames of this.yAxisColumnNamesArrays) {
-          const yAxisColumnName = yAxisColumnNames[0]; // Assuming only one column is used
-          const yAxisColumnNameValues = await this.selectVariableValues(
-            response,
-            yAxisColumnName
+    // Recursive function to process query builders
+    const processQueryBuilder = (index: number) => {
+      if (index >= this.queryBuilders.length) {
+        // All query builders processed, create the chart
+        if (allDatasets.length > 0) {
+          const allYAverages = allDatasets.map(
+            (dataset) =>
+              dataset.data.reduce((sum, point) => sum + point.y, 0) /
+              dataset.data.length
           );
 
-          const dataPoints = [];
-          for (
-            let i = 0;
-            i < xAxisColumnNameValues.length &&
-            i < yAxisColumnNameValues.length;
-            i++
-          ) {
-            dataPoints.push({
-              x: xAxisColumnNameValues[i].toString(),
-              y: yAxisColumnNameValues[i],
+          const minYValue = Math.min(...allYAverages);
+          const maxYValue = Math.max(...allYAverages);
+
+          const yAxesConfig = {
+            y: {
+              type: 'linear',
+              ticks: {
+                min: minYValue,
+                max: maxYValue,
+                beginAtZero: true,
+              },
+            },
+          };
+
+          new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: allDatasets,
+            },
+            options: {
+              scales: yAxesConfig as any, // Use type assertion to bypass strict type checking
+            },
+          });
+        }
+        return;
+      }
+
+      const queryBuilder = this.queryBuilders[index];
+      const query = queryBuilder.query;
+
+      let response: Observable<any>;
+
+      if (this.selectedDatabaseType === 'mongodb') {
+        const mongoQuery = this.mongodbDatabaseService.convertRuleToMongoQuery(
+          query,
+          this.tableNames
+        );
+        response = this.mongodbDatabaseService.executeQuery(
+          this.connectionString,
+          mongoQuery
+        );
+      } else if (this.selectedDatabaseType === 'postgresql') {
+        const sqlQuery = this.sqlDatabaseService.convertToSQL(
+          this.tableNames,
+          query
+        );
+
+        response = this.sqlDatabaseService.executeSQL(sqlQuery);
+      } else {
+        console.error(
+          'Invalid selectedDatabaseType:',
+          this.selectedDatabaseType
+        );
+        return;
+      }
+
+      response.subscribe(
+        async (data) => {
+          const xAxisColumnNameValues = await this.selectVariableValues(
+            response,
+            this.xAxisColumnName
+          );
+
+          // Calculate minimum and maximum values for y-axis across all datasets
+          const allYValues = [];
+
+          for (const yAxisColumnNames of this.yAxisColumnNamesArrays) {
+            const yAxisColumnName = yAxisColumnNames[0];
+            const yAxisColumnNameValues = await this.selectVariableValues(
+              response,
+              yAxisColumnName
+            );
+
+            allYValues.push(...yAxisColumnNameValues);
+
+            const dataPoints = [];
+            for (
+              let i = 0;
+              i < xAxisColumnNameValues.length &&
+              i < yAxisColumnNameValues.length;
+              i++
+            ) {
+              dataPoints.push({
+                x: xAxisColumnNameValues[i].toString(),
+                y: yAxisColumnNameValues[i],
+              });
+            }
+
+            allDatasets.push({
+              label: yAxisColumnNames.join(', '),
+              data: dataPoints,
+              backgroundColor: this.getRandomColor(),
+              beginAtZero: true,
             });
           }
 
-          datasets.push({
-            label: yAxisColumnNames.join(', '),
-            data: dataPoints,
-            backgroundColor: this.getRandomColor(),
-            beginAtZero: true,
-          });
-        }
+          // Calculate the common y-axis range
+          const minYValue = Math.min(...allYValues);
+          const maxYValue = Math.max(...allYValues);
 
-        new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels: labels,
-            datasets: datasets,
-          },
-          options: {
-            scales: {
-              x: {
-                reverse: false,
-              },
-            },
-          },
-        });
-      },
-      (error) => {
-        console.error('Error executing SQL:', error);
-      }
-    );
+          // Recursively process the next query builder
+          processQueryBuilder(index + 1);
+        },
+        (error) => {
+          console.error('Error executing SQL:', error);
+        }
+      );
+    };
+
+    // Start processing query builders from index 0
+    processQueryBuilder(0);
   }
+
   getRandomColor(): string {
     const letters = '0123456789ABCDEF';
     let color = '#';
@@ -357,7 +435,7 @@ export class ConnectFormComponent implements OnInit {
     return Object.keys(data);
   }
 
-  toggleYAxisColumn() {
+  toggleYAxisColumn(index: number) {
     this.convertToChartData();
   }
   toggleXAxisColumn() {
