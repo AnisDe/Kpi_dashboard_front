@@ -69,6 +69,7 @@
     </tbody>
   </table>
 </div>
+
 <div *ngIf="result">
   <div class="queryBuilderContainer">
     <div *ngFor="let queryBuilder of queryBuilders; let i = index">
@@ -124,3 +125,4 @@
 </div>
 
 <canvas id="myChart"></canvas>
+<button (click)="disconnectFromDatabase(url)">Disconnect</button>

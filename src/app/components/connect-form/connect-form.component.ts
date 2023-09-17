@@ -2,12 +2,12 @@ import { Component, OnInit } from '@angular/core';
 import { SqlDatabaseService } from '../../services/DataBase_Services/SqlDatabase_Services/sql-database.service';
 import { MongoDatabaseService } from 'src/app/services/DataBase_Services/MongoDatabase_Services/mongo-database.service';
 import { Field, QueryBuilderConfig } from 'ngx-angular-query-builder';
-import { interval, min } from 'rxjs';
+import { catchError, interval, min } from 'rxjs';
 import { Observable } from 'rxjs';
 
 import Chart from 'chart.js/auto';
 import { QueryBuilderService } from 'src/app/services/QueryBuilder_Services/query-builder.service';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { KeycloakService } from 'keycloak-angular';
 interface Metadata {
   [key: string]: { [key: string]: any[] };
@@ -82,11 +82,7 @@ export class ConnectFormComponent implements OnInit {
     this.keycloakService.logout('http://localhost:4200/');
   }
   removeYAxisInput(index: number): void {
-    const canvas = document.getElementById('myChart') as HTMLCanvasElement;
-    const existingChart = Chart.getChart(canvas);
-    if (existingChart) {
-      existingChart.destroy();
-    }
+    this.destroyChart('myChart');
     this.yAxisColumnNamesArrays.splice(index, 1);
     this.convertToChartData();
   }
@@ -144,6 +140,35 @@ export class ConnectFormComponent implements OnInit {
     const urlEndpoint = `${this.baseUrl}/connect`;
     return this.http.post<any>(urlEndpoint, body);
   }
+  destroyChart(canvasId: string) {
+    const canvas = document.getElementById(canvasId) as HTMLCanvasElement;
+    const existingChart = Chart.getChart(canvas);
+    if (existingChart) {
+      existingChart.destroy();
+    }
+  }
+  disconnect(url: string): Observable<any> {
+    const headers = new HttpHeaders({ 'Content-Type': 'application/json' });
+    const requestBody = { url };
+    this.destroyChart('myChart');
+    console.log('url', url, ' headers:', headers);
+    return this.http.post(`${this.baseUrl}/disconnect`, requestBody, {
+      headers,
+    });
+  }
+  disconnectFromDatabase(url: string) {
+    this.disconnect(url).subscribe(
+      (response) => {
+        console.log('Disconnected successfully:', response);
+        // Handle success here
+      },
+      (error) => {
+        console.error('Error disconnecting from the database:', error);
+        // Handle error here
+      }
+    );
+  }
+
   refreshData(): void {
     if (!this.url || !this.username) {
       return;
@@ -165,9 +190,7 @@ export class ConnectFormComponent implements OnInit {
 
   onQueryChange(index: number) {
     this.convertToChartData();
-    console.log(this.yAxisColumnName);
-    console.log('URLLLL', this.connectionString);
-    console.log('YYYYYYYYYY', this.yAxisColumnNamesArrays);
+
     // Check if the field and value exist in the result
     // if (!this.isDataValid(field, value)) {
     //   console.log('Field or value does not exist in the result.');
@@ -184,9 +207,7 @@ export class ConnectFormComponent implements OnInit {
   ): Promise<any[]> {
     return new Promise<any[]>((resolve) => {
       response.subscribe((data) => {
-        console.log('DATAAAAAA', data);
         const variableValues = data.map((item) => item[variableName]);
-        console.log('selectVariableValues', variableValues);
         resolve(variableValues);
       });
     });
@@ -338,7 +359,7 @@ export class ConnectFormComponent implements OnInit {
           processQueryBuilder(index + 1);
         },
         (error) => {
-          console.error('Error executing SQL:', error);
+          console.error('Error executing QUERRY:', error);
         }
       );
     };
@@ -411,21 +432,21 @@ export class ConnectFormComponent implements OnInit {
       });
     }
   }
-  getColumnType(columnType: any): string {
-    if (Array.isArray(columnType)) {
-      return columnType.length > 0 ? columnType[0] : 'unknown';
-    } else if (columnType && typeof columnType === 'object') {
-      if (columnType.hasOwnProperty('columnType')) {
-        return this.getColumnType(columnType.columnType);
-      } else if (columnType.hasOwnProperty('fieldType')) {
-        return this.getColumnType(columnType.fieldType);
-      } else if (columnType.hasOwnProperty('dataType')) {
-        return columnType.dataType.toLowerCase();
+  getColumnType(column: any): string {
+    if (Array.isArray(column)) {
+      return column.length > 0 ? column[0] : 'unknown';
+    } else if (column && typeof column === 'object') {
+      if (column.hasOwnProperty('columnType')) {
+        return this.getColumnType(column.columnType);
+      } else if (column.hasOwnProperty('fieldType')) {
+        return this.getColumnType(column.fieldType);
+      } else if (column.hasOwnProperty('dataType')) {
+        return column.dataType.toLowerCase();
       } else {
         return 'unknown';
       }
-    } else if (typeof columnType === 'string') {
-      return columnType;
+    } else if (typeof column === 'string') {
+      return column;
     } else {
       return 'unknown';
     }
