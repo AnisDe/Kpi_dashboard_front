@@ -125,4 +125,6 @@
 </div>
 
 <canvas id="myChart"></canvas>
-<button (click)="disconnectFromDatabase(url)">Disconnect</button>
+<div *ngIf="result">
+  <button (click)="disconnectFromDatabase(url)">Disconnect</button>
+</div>

@@ -57,7 +57,7 @@ export class ConnectFormComponent implements OnInit {
   queryBuilders: { config: QueryBuilderConfig; query: any }[] = [
     { config: this.config, query: this.query }, // Initial query builder
   ];
-  tableNames: string[] = []; // Declaring tableNames as a class property
+  tableNames: string[] = [];
   columnNames: string[] = [];
   constructor(
     private sqlDatabaseService: SqlDatabaseService,
@@ -68,9 +68,26 @@ export class ConnectFormComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
+    const storedUrl = sessionStorage.getItem('url');
+    const storedUsername = sessionStorage.getItem('username');
+    const storedPassword = sessionStorage.getItem('password');
+
+    if (
+      storedUrl !== null ||
+      storedUsername !== null ||
+      storedPassword !== null
+    ) {
+      this.onConnect();
+    }
+    const chartDataString = sessionStorage.getItem('chartData');
+    const chartData = chartDataString ? JSON.parse(chartDataString) : null;
+    if (chartData !== null) {
+      this.createChart(chartData);
+    }
     this.queryBuilderConfig = {
       fields: {},
     };
+
     // interval(10000).subscribe(() => {
     //   this.refreshData();
     // });
@@ -78,6 +95,7 @@ export class ConnectFormComponent implements OnInit {
   addYAxisInput(): void {
     this.yAxisColumnNamesArrays.push(['']);
   }
+
   logout() {
     this.keycloakService.logout('http://localhost:4200/');
   }
@@ -96,6 +114,28 @@ export class ConnectFormComponent implements OnInit {
     this.result = null;
     this.error = null;
 
+    // Check if values exist in sessionStorage
+    const storedUrl = sessionStorage.getItem('url');
+    const storedUsername = sessionStorage.getItem('username');
+    const storedPassword = sessionStorage.getItem('password');
+    const storedDatabaseType = sessionStorage.getItem('selectedDatabaseType');
+    const storedDatabaseName = sessionStorage.getItem('databaseName');
+
+    if (
+      storedUrl !== null &&
+      storedUsername !== null &&
+      storedDatabaseType !== null &&
+      storedDatabaseName !== null
+    ) {
+      this.url = storedUrl;
+      this.username = storedUsername;
+      this.password = storedPassword || '';
+      this.databaseName = storedDatabaseName;
+      this.selectedDatabaseType = storedDatabaseType as
+        | 'mongodb'
+        | 'postgresql';
+    }
+
     if (!this.url || !this.username) {
       this.loading = false;
       this.error = 'URL and Username are required fields.';
@@ -113,12 +153,23 @@ export class ConnectFormComponent implements OnInit {
       console.error('Selected database service is undefined.');
       return;
     }
+
     this.connect(this.url, this.username, this.password).subscribe(
       (data: Metadata) => {
         this.loading = false;
         this.connectionString = this.url;
         this.result = data;
         this.setFields(data);
+
+        // Store values in sessionStorage
+        sessionStorage.setItem('url', this.url);
+        sessionStorage.setItem('username', this.username);
+        sessionStorage.setItem('password', this.password);
+        sessionStorage.setItem(
+          'selectedDatabaseType',
+          this.selectedDatabaseType
+        );
+        sessionStorage.setItem('databaseName', this.databaseName);
       },
       (error: { message: string | null }) => {
         console.error('Connect failed!', error);
@@ -127,9 +178,16 @@ export class ConnectFormComponent implements OnInit {
       }
     );
   }
+
   connect(url: string, username: string, password: string): Observable<any> {
     const databaseName = this.databaseName;
-    const selectedDatabaseType = this.selectedDatabaseType;
+    console.log(sessionStorage.getItem('selectedDatabaseType'));
+    const storedDatabaseType = sessionStorage.getItem('selectedDatabaseType');
+    const selectedDatabaseType =
+      storedDatabaseType !== null
+        ? storedDatabaseType
+        : this.selectedDatabaseType;
+
     const body = {
       databaseName,
       selectedDatabaseType,
@@ -152,19 +210,24 @@ export class ConnectFormComponent implements OnInit {
     const requestBody = { url };
     this.destroyChart('myChart');
     console.log('url', url, ' headers:', headers);
+    sessionStorage.removeItem('chartData');
+    sessionStorage.removeItem('url');
+    sessionStorage.removeItem('username');
+    sessionStorage.removeItem('password');
     return this.http.post(`${this.baseUrl}/disconnect`, requestBody, {
       headers,
+      responseType: 'text',
     });
   }
   disconnectFromDatabase(url: string) {
     this.disconnect(url).subscribe(
       (response) => {
+        window.location.reload();
+
         console.log('Disconnected successfully:', response);
-        // Handle success here
       },
       (error) => {
         console.error('Error disconnecting from the database:', error);
-        // Handle error here
       }
     );
   }
@@ -212,7 +275,34 @@ export class ConnectFormComponent implements OnInit {
       });
     });
   }
+  createChart(chartData: any) {
+    if (chartData) {
+      // Assuming you have access to the canvas and ctx as before
+      const canvas = document.getElementById(
+        'myChart'
+      ) as HTMLCanvasElement | null;
+      const ctx = canvas?.getContext('2d');
 
+      if (!canvas || !ctx) {
+        console.error('Chart canvas element or context not found.');
+        return;
+      }
+
+      // Create the chart using the provided chart data
+      new Chart(ctx, {
+        type: 'line',
+        data: chartData,
+        options: {
+          // Customize chart options here as needed
+          scales: {
+            // Your scale configuration here
+          },
+        },
+      });
+    } else {
+      console.error('Chart data not found.');
+    }
+  }
   convertToChartData(): void {
     const canvas = document.getElementById(
       'myChart'
@@ -235,7 +325,6 @@ export class ConnectFormComponent implements OnInit {
 
     const labels = Array.from([], () => '');
 
-    // Initialize the datasets array to hold all datasets from all query builders
     const allDatasets: {
       label: string;
       data: { x: any; y: any }[];
@@ -246,8 +335,17 @@ export class ConnectFormComponent implements OnInit {
     // Recursive function to process query builders
     const processQueryBuilder = (index: number) => {
       if (index >= this.queryBuilders.length) {
-        // All query builders processed, create the chart
         if (allDatasets.length > 0) {
+          const chartData = {
+            labels: labels,
+            datasets: allDatasets,
+          };
+
+          // Convert the chart data to a JSON string
+          const chartDataString = JSON.stringify(chartData);
+
+          sessionStorage.setItem('chartData', chartDataString);
+
           const allYAverages = allDatasets.map(
             (dataset) =>
               dataset.data.reduce((sum, point) => sum + point.y, 0) /
@@ -270,12 +368,9 @@ export class ConnectFormComponent implements OnInit {
 
           new Chart(ctx, {
             type: 'line',
-            data: {
-              labels: labels,
-              datasets: allDatasets,
-            },
+            data: chartData,
             options: {
-              scales: yAxesConfig as any, // Use type assertion to bypass strict type checking
+              scales: yAxesConfig as any,
             },
           });
         }
@@ -351,20 +446,15 @@ export class ConnectFormComponent implements OnInit {
             });
           }
 
-          // Calculate the common y-axis range
-          const minYValue = Math.min(...allYValues);
-          const maxYValue = Math.max(...allYValues);
-
           // Recursively process the next query builder
           processQueryBuilder(index + 1);
         },
         (error) => {
-          console.error('Error executing QUERRY:', error);
+          console.error('Error executing QUERY:', error);
         }
       );
     };
 
-    // Start processing query builders from index 0
     processQueryBuilder(0);
   }
 
@@ -391,7 +481,7 @@ export class ConnectFormComponent implements OnInit {
 
     for (const [tableName, table] of Object.entries(metadata)) {
       const columns = this.getTableNames(table);
-      this.tableNames.push(tableName); // Add tableName to the tableNames array
+      this.tableNames.push(tableName);
       columns.forEach((column: string) => {
         const columnData = table[column];
         const columnType = this.getColumnType(columnData);
@@ -403,7 +493,7 @@ export class ConnectFormComponent implements OnInit {
           ),
         };
         queryBuilderConfigFields[column] = field;
-        this.columnNames.push(column); // Add column to the columnNames array
+        this.columnNames.push(column);
       });
     }
   }
@@ -413,7 +503,7 @@ export class ConnectFormComponent implements OnInit {
 
     for (const [tableName, table] of Object.entries(metadata)) {
       const columns = this.getTableNames(table);
-      this.tableNames.push(tableName); // Add tableName to the tableNames array
+      this.tableNames.push(tableName);
 
       columns.forEach((column: string) => {
         const columnData = table[column];
@@ -428,7 +518,7 @@ export class ConnectFormComponent implements OnInit {
           ),
         };
         queryBuilderConfigFields[column] = field;
-        this.columnNames.push(column); // Add column to the columnNames array
+        this.columnNames.push(column);
       });
     }
   }
