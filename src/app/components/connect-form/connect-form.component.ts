@@ -2,16 +2,15 @@ import { Component, OnInit } from '@angular/core';
 import { SqlDatabaseService } from '../../services/DataBase_Services/SqlDatabase_Services/sql-database.service';
 import { MongoDatabaseService } from 'src/app/services/DataBase_Services/MongoDatabase_Services/mongo-database.service';
 import { Field, QueryBuilderConfig } from 'ngx-angular-query-builder';
-import { catchError, interval, min } from 'rxjs';
-import { Observable } from 'rxjs';
+import { Observable, interval } from 'rxjs';
 
 import Chart from 'chart.js/auto';
 import { QueryBuilderService } from 'src/app/services/QueryBuilder_Services/query-builder.service';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { KeycloakService } from 'keycloak-angular';
-interface Metadata {
-  [key: string]: { [key: string]: any[] };
-}
+import { HttpClient } from '@angular/common/http';
+import { ChartService } from 'src/app/services/Chart_services/chart.service';
+import { Metadata } from 'src/app/shared/interfaces';
+import { SharedDatabasesService } from 'src/app/services/DataBase_Services/SharedDatabases_Services/shared-databases.service';
+import { ToastrService } from 'ngx-toastr';
 
 @Component({
   selector: 'app-connect-form',
@@ -19,17 +18,23 @@ interface Metadata {
   styleUrls: ['connect-form.component.css'],
 })
 export class ConnectFormComponent implements OnInit {
+  selectedDatabaseType: 'mongodb' | 'postgresql' | '' = '';
   databaseName = '';
   url = '';
   username = '';
+  password = '';
   connectionString = '';
   databaseService: any;
-  password = '';
+
   loading = false;
   result: Metadata | null = null;
   error: string | null = null;
   xAxisColumnName: string = '';
   yAxisColumnName: string = '';
+  queryName: string = '';
+  filteredData: any[] = [];
+  isPieButtonActivated = false;
+  isLineButtonActivated = true;
   yAxisColumnNamesArrays: string[][] = [[]];
   private baseUrl = 'http://localhost:9090/tables';
   queryBuilderConfig!: QueryBuilderConfig;
@@ -37,11 +42,11 @@ export class ConnectFormComponent implements OnInit {
     condition: 'and',
     rules: [],
   };
-  selectedDatabaseType: 'mongodb' | 'postgresql' = 'mongodb';
 
   config: QueryBuilderConfig = {
     fields: {},
   };
+  databases: any;
 
   addQueryBuilder(): void {
     this.queryBuilders.push({
@@ -52,69 +57,80 @@ export class ConnectFormComponent implements OnInit {
 
   removeQueryBuilder(index: number): void {
     this.queryBuilders.splice(index, 1);
-    this.convertToChartData();
   }
-  queryBuilders: { config: QueryBuilderConfig; query: any }[] = [
-    { config: this.config, query: this.query }, // Initial query builder
-  ];
+
+  queryBuilders: { config: QueryBuilderConfig; query: any }[] = [];
   tableNames: string[] = [];
   columnNames: string[] = [];
   constructor(
     private sqlDatabaseService: SqlDatabaseService,
     private mongodbDatabaseService: MongoDatabaseService,
     private queryBuilderService: QueryBuilderService,
-    private keycloakService: KeycloakService,
-    private http: HttpClient
+    private chartService: ChartService,
+    private sharedDatabasesService: SharedDatabasesService,
+    private http: HttpClient,
+    private toastr: ToastrService
   ) {}
 
   ngOnInit(): void {
-    const storedUrl = sessionStorage.getItem('url');
-    const storedUsername = sessionStorage.getItem('username');
-    const storedPassword = sessionStorage.getItem('password');
+    this.filteredData = [];
+    const storedToken = sessionStorage.getItem('token');
+    const storedDbUrl = sessionStorage.getItem('url');
+    const storedDbUsername = sessionStorage.getItem('username');
+    const storedDbPassword = sessionStorage.getItem('password');
+    console.log(sessionStorage.getItem('logged_username'));
 
-    if (
-      storedUrl !== null ||
-      storedUsername !== null ||
-      storedPassword !== null
-    ) {
-      this.onConnect();
+    if (storedToken) {
+      const tokenUsername = this.extractUsernameFromKeycloakToken(storedToken);
+      const storedLogedUsername = sessionStorage.getItem('logged_username');
+      if (tokenUsername === storedLogedUsername) {
+        // Token is valid, and it belongs to the same user
+        this.sharedDatabasesService.getDataBases().subscribe((data) => {
+          this.databases = data;
+        });
+        if (
+          storedDbUrl !== null ||
+          storedDbUsername !== null ||
+          storedDbPassword !== null
+        ) {
+          this.onConnect();
+          this.filteredData = [];
+        }
+      }
     }
-    const chartDataString = sessionStorage.getItem('chartData');
-    const chartData = chartDataString ? JSON.parse(chartDataString) : null;
-    if (chartData !== null) {
-      this.createChart(chartData);
-    }
+
     this.queryBuilderConfig = {
       fields: {},
     };
-
-    // interval(10000).subscribe(() => {
-    //   this.refreshData();
-    // });
   }
+
   addYAxisInput(): void {
     this.yAxisColumnNamesArrays.push(['']);
   }
 
-  logout() {
-    this.keycloakService.logout('http://localhost:4200/');
-  }
   removeYAxisInput(index: number): void {
-    this.destroyChart('myChart');
+    this.chartService.destroyChart('myChart');
     this.yAxisColumnNamesArrays.splice(index, 1);
-    this.convertToChartData();
   }
 
   updateYAxisArray(selectedValue: string, index: number): void {
     this.yAxisColumnNamesArrays[index][0] = selectedValue;
+  }
+  extractUsernameFromKeycloakToken(token: string): string | null {
+    try {
+      const tokenPayload = JSON.parse(atob(token.split('.')[1]));
+      return tokenPayload.name;
+    } catch (error) {
+      console.error('Error extracting username from token:', error);
+      return null;
+    }
   }
 
   onConnect(): void {
     this.loading = true;
     this.result = null;
     this.error = null;
-
-    // Check if values exist in sessionStorage
+    this.filteredData = [];
     const storedUrl = sessionStorage.getItem('url');
     const storedUsername = sessionStorage.getItem('username');
     const storedPassword = sessionStorage.getItem('password');
@@ -136,9 +152,12 @@ export class ConnectFormComponent implements OnInit {
         | 'postgresql';
     }
 
-    if (!this.url || !this.username) {
+    if (!this.url || !this.username || this.selectedDatabaseType == '') {
       this.loading = false;
-      this.error = 'URL and Username are required fields.';
+      // this.error = 'URL and Username are required fields.';
+      this.toastr.error('All fields are required.', 'Error', {
+        positionClass: 'toast-top-center',
+      });
       return;
     }
 
@@ -170,6 +189,10 @@ export class ConnectFormComponent implements OnInit {
           this.selectedDatabaseType
         );
         sessionStorage.setItem('databaseName', this.databaseName);
+        this.refreshQuerys();
+        // interval(10000).subscribe(() => {
+        //   this.refreshData();
+        // });
       },
       (error: { message: string | null }) => {
         console.error('Connect failed!', error);
@@ -181,12 +204,8 @@ export class ConnectFormComponent implements OnInit {
 
   connect(url: string, username: string, password: string): Observable<any> {
     const databaseName = this.databaseName;
-    console.log(sessionStorage.getItem('selectedDatabaseType'));
-    const storedDatabaseType = sessionStorage.getItem('selectedDatabaseType');
-    const selectedDatabaseType =
-      storedDatabaseType !== null
-        ? storedDatabaseType
-        : this.selectedDatabaseType;
+    sessionStorage.setItem('selectedDatabaseType', this.selectedDatabaseType);
+    const selectedDatabaseType = this.selectedDatabaseType;
 
     const body = {
       databaseName,
@@ -198,29 +217,16 @@ export class ConnectFormComponent implements OnInit {
     const urlEndpoint = `${this.baseUrl}/connect`;
     return this.http.post<any>(urlEndpoint, body);
   }
-  destroyChart(canvasId: string) {
-    const canvas = document.getElementById(canvasId) as HTMLCanvasElement;
-    const existingChart = Chart.getChart(canvas);
-    if (existingChart) {
-      existingChart.destroy();
-    }
-  }
-  disconnect(url: string): Observable<any> {
-    const headers = new HttpHeaders({ 'Content-Type': 'application/json' });
-    const requestBody = { url };
-    this.destroyChart('myChart');
-    console.log('url', url, ' headers:', headers);
-    sessionStorage.removeItem('chartData');
-    sessionStorage.removeItem('url');
-    sessionStorage.removeItem('username');
-    sessionStorage.removeItem('password');
-    return this.http.post(`${this.baseUrl}/disconnect`, requestBody, {
-      headers,
-      responseType: 'text',
+
+  refreshQuerys() {
+    this.sharedDatabasesService.getFilteredData().subscribe((data) => {
+      console.log(data);
+      this.filteredData = data;
     });
   }
+
   disconnectFromDatabase(url: string) {
-    this.disconnect(url).subscribe(
+    this.sharedDatabasesService.disconnect(url).subscribe(
       (response) => {
         window.location.reload();
 
@@ -230,39 +236,27 @@ export class ConnectFormComponent implements OnInit {
         console.error('Error disconnecting from the database:', error);
       }
     );
+    this.filteredData = [];
   }
 
   refreshData(): void {
     if (!this.url || !this.username) {
       return;
     }
-    this.databaseService
-      .connect(this.url, this.username, this.password)
-      .subscribe(
-        (data: Metadata) => {
-          this.result = data;
-          this.setFields(data);
-          console.log('Data refreshed');
-        },
-        (error: { message: string | null }) => {
-          console.error('Connect failed!', error);
-          this.error = error.message;
-        }
-      );
+    this.connect(this.url, this.username, this.password).subscribe(
+      (data: Metadata) => {
+        this.result = data;
+        this.setFields(data);
+        console.log('Data refreshed');
+      },
+      (error: { message: string | null }) => {
+        console.error('Connect failed!', error);
+        this.error = error.message;
+      }
+    );
   }
 
-  onQueryChange(index: number) {
-    this.convertToChartData();
-
-    // Check if the field and value exist in the result
-    // if (!this.isDataValid(field, value)) {
-    //   console.log('Field or value does not exist in the result.');
-    //   return;
-    // }
-    // const sqlQuery = this.convertToSQL(this.tableNames, this.query);
-    // console.log(sqlQuery);
-    // this.executeSQL(sqlQuery);
-  }
+  onQueryChange(index: number) {}
 
   async selectVariableValues(
     response: Observable<any[]>,
@@ -275,47 +269,20 @@ export class ConnectFormComponent implements OnInit {
       });
     });
   }
-  createChart(chartData: any) {
-    if (chartData) {
-      // Assuming you have access to the canvas and ctx as before
-      const canvas = document.getElementById(
-        'myChart'
-      ) as HTMLCanvasElement | null;
-      const ctx = canvas?.getContext('2d');
 
-      if (!canvas || !ctx) {
-        console.error('Chart canvas element or context not found.');
-        return;
-      }
-
-      // Create the chart using the provided chart data
-      new Chart(ctx, {
-        type: 'line',
-        data: chartData,
-        options: {
-          // Customize chart options here as needed
-          scales: {
-            // Your scale configuration here
-          },
-        },
-      });
-    } else {
-      console.error('Chart data not found.');
-    }
-  }
-  convertToChartData(): void {
+  initializeChartCanvas(): HTMLCanvasElement | null {
     const canvas = document.getElementById(
       'myChart'
     ) as HTMLCanvasElement | null;
     if (!canvas) {
       console.error('Chart canvas element not found.');
-      return;
+      return null;
     }
 
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       console.error('Failed to get 2D context for chart canvas.');
-      return;
+      return null;
     }
 
     const existingChart = Chart.getChart(canvas);
@@ -323,81 +290,190 @@ export class ConnectFormComponent implements OnInit {
       existingChart.destroy();
     }
 
-    const labels = Array.from([], () => '');
+    return canvas;
+  }
 
-    const allDatasets: {
-      label: string;
-      data: { x: any; y: any }[];
-      backgroundColor: string;
-      beginAtZero: boolean;
-    }[] = [];
+  //////// PIE CHART WORK
+  convertDataToPieChart(): void {
+    const canvas = this.initializeChartCanvas();
+    if (!canvas) {
+      return;
+    }
 
-    // Recursive function to process query builders
-    const processQueryBuilder = (index: number) => {
+    const labels: string[] = [];
+    const dataPoints: number[] = [];
+    const queryBuilders: any[] = [];
+
+    let completedQueries = 0;
+    let sqlQuery: string; // Declare sqlQuery here
+    let mongoQuery: string; // Declare mongoQuery here
+
+    const processQueryBuilders = (index: number) => {
       if (index >= this.queryBuilders.length) {
-        if (allDatasets.length > 0) {
-          const chartData = {
-            labels: labels,
-            datasets: allDatasets,
-          };
+        this.chartService.createPieChart(canvas, labels, dataPoints);
 
-          // Convert the chart data to a JSON string
-          const chartDataString = JSON.stringify(chartData);
-
-          sessionStorage.setItem('chartData', chartDataString);
-
-          const allYAverages = allDatasets.map(
-            (dataset) =>
-              dataset.data.reduce((sum, point) => sum + point.y, 0) /
-              dataset.data.length
-          );
-
-          const minYValue = Math.min(...allYAverages);
-          const maxYValue = Math.max(...allYAverages);
-
-          const yAxesConfig = {
-            y: {
-              type: 'linear',
-              ticks: {
-                min: minYValue,
-                max: maxYValue,
-                beginAtZero: true,
-              },
-            },
-          };
-
-          new Chart(ctx, {
-            type: 'line',
-            data: chartData,
-            options: {
-              scales: yAxesConfig as any,
-            },
-          });
+        if (completedQueries === this.queryBuilders.length) {
+          if (this.selectedDatabaseType === 'mongodb') {
+            this.mongodbDatabaseService.saveQuery(
+              this.connectionString,
+              JSON.stringify(queryBuilders),
+              this.queryName
+            );
+          } else if (this.selectedDatabaseType === 'postgresql') {
+            this.sqlDatabaseService.saveQuery(
+              this.queryName,
+              sqlQuery,
+              JSON.stringify(queryBuilders)
+            );
+          } else {
+            console.error(
+              'Invalid selectedDatabaseType:',
+              this.selectedDatabaseType
+            );
+            return;
+          }
         }
         return;
       }
 
       const queryBuilder = this.queryBuilders[index];
+      queryBuilders.push(queryBuilder.query);
       const query = queryBuilder.query;
-
       let response: Observable<any>;
 
       if (this.selectedDatabaseType === 'mongodb') {
-        const mongoQuery = this.mongodbDatabaseService.convertRuleToMongoQuery(
+        mongoQuery = this.mongodbDatabaseService.convertRuleToMongoQuery(
           query,
           this.tableNames
         );
-        response = this.mongodbDatabaseService.executeQuery(
+        response = this.mongodbDatabaseService.executeSQL(
           this.connectionString,
-          mongoQuery
+          mongoQuery,
+          this.queryName
         );
       } else if (this.selectedDatabaseType === 'postgresql') {
-        const sqlQuery = this.sqlDatabaseService.convertToSQL(
-          this.tableNames,
-          query
+        sqlQuery = this.sqlDatabaseService.convertToSQL(this.tableNames, query);
+        response = this.sqlDatabaseService.executeSQL(
+          this.queryName,
+          sqlQuery,
+          JSON.stringify(queryBuilders)
         );
+      } else {
+        console.error(
+          'Invalid selectedDatabaseType:',
+          this.selectedDatabaseType
+        );
+        return;
+      }
 
-        response = this.sqlDatabaseService.executeSQL(sqlQuery);
+      response.subscribe(
+        async (data) => {
+          const yAxisColumnName = this.yAxisColumnNamesArrays[0][0];
+          const yAxisColumnNameValues = await this.selectVariableValues(
+            response,
+            yAxisColumnName
+          );
+
+          const maxValue = Math.max(...yAxisColumnNameValues);
+
+          labels.push(yAxisColumnName);
+          dataPoints.push(maxValue);
+
+          completedQueries++;
+
+          processQueryBuilders(index + 1);
+        },
+        (error) => {
+          console.error('Error executing QUERY:', error);
+        }
+      );
+    };
+
+    processQueryBuilders(0);
+  }
+  convertDataToChart() {
+    if (this.isPieButtonActivated) {
+      this.convertDataToPieChart();
+    } else if (this.isLineButtonActivated) {
+      this.convertDataToLineChart();
+    }
+  }
+  convertDataToLineChart(): void {
+    const canvas = this.initializeChartCanvas();
+    if (!canvas) {
+      return;
+    }
+
+    const labels = Array.from([], () => '');
+    let completedQueries = 0;
+
+    let sqlQuery: string; // Declare sqlQuery here
+    let mongoQuery: string;
+    const allDatasets: {
+      label: string;
+      data: { x: any; y: any }[];
+      backgroundColor: string;
+      borderColor: string;
+      beginAtZero: boolean;
+    }[] = [];
+
+    const queryBuilders: any[] = []; // Create an array to store query builders
+
+    const processQueryBuilder = (index: number) => {
+      if (index >= this.queryBuilders.length) {
+        this.chartService.processChart(
+          allDatasets,
+          labels,
+          canvas.getContext('2d')
+        );
+        if (completedQueries === this.queryBuilders.length) {
+          if (this.selectedDatabaseType === 'mongodb') {
+            this.mongodbDatabaseService.saveQuery(
+              this.connectionString,
+              JSON.stringify(queryBuilders),
+              this.queryName
+            );
+          } else if (this.selectedDatabaseType === 'postgresql') {
+            this.sqlDatabaseService.saveQuery(
+              this.queryName,
+              sqlQuery,
+              JSON.stringify(queryBuilders)
+            );
+          } else {
+            console.error(
+              'Invalid selectedDatabaseType:',
+              this.selectedDatabaseType
+            );
+            return;
+          }
+        }
+        return;
+      }
+
+      const queryBuilder = this.queryBuilders[index];
+      queryBuilders.push(queryBuilder.query);
+      const query = queryBuilder.query;
+      let response: Observable<any>;
+
+      if (this.selectedDatabaseType === 'mongodb') {
+        mongoQuery = this.mongodbDatabaseService.convertRuleToMongoQuery(
+          query,
+          this.tableNames
+        );
+        console.log(this.queryName);
+
+        response = this.mongodbDatabaseService.executeSQL(
+          this.connectionString,
+          mongoQuery,
+          this.queryName
+        );
+      } else if (this.selectedDatabaseType === 'postgresql') {
+        sqlQuery = this.sqlDatabaseService.convertToSQL(this.tableNames, query);
+        response = this.sqlDatabaseService.executeSQL(
+          this.queryName,
+          sqlQuery,
+          JSON.stringify(queryBuilders)
+        );
       } else {
         console.error(
           'Invalid selectedDatabaseType:',
@@ -413,8 +489,8 @@ export class ConnectFormComponent implements OnInit {
             this.xAxisColumnName
           );
 
-          // Calculate minimum and maximum values for y-axis across all datasets
           const allYValues = [];
+          const color = this.chartService.getRandomColor(); // Generate a single color
 
           for (const yAxisColumnNames of this.yAxisColumnNamesArrays) {
             const yAxisColumnName = yAxisColumnNames[0];
@@ -441,12 +517,13 @@ export class ConnectFormComponent implements OnInit {
             allDatasets.push({
               label: yAxisColumnNames.join(', '),
               data: dataPoints,
-              backgroundColor: this.getRandomColor(),
+              backgroundColor: color, // Use the same color for background
+              borderColor: color, // Use the same color for border
               beginAtZero: true,
             });
           }
+          completedQueries++;
 
-          // Recursively process the next query builder
           processQueryBuilder(index + 1);
         },
         (error) => {
@@ -458,14 +535,6 @@ export class ConnectFormComponent implements OnInit {
     processQueryBuilder(0);
   }
 
-  getRandomColor(): string {
-    const letters = '0123456789ABCDEF';
-    let color = '#';
-    for (let i = 0; i < 6; i++) {
-      color += letters[Math.floor(Math.random() * 16)];
-    }
-    return color;
-  }
   setFields(metadata: Metadata): void {
     if (this.selectedDatabaseType === 'mongodb') {
       this.setFieldsForMongoDB(metadata);
@@ -476,6 +545,42 @@ export class ConnectFormComponent implements OnInit {
     }
   }
 
+  createQueryBuildersFromQueries(
+    queries: any[] | string,
+    queryName: string
+  ): void {
+    console.log(queries);
+    const queryArray =
+      typeof queries === 'string' ? JSON.parse(queries) : queries;
+
+    if (!Array.isArray(queryArray)) {
+      // Handle the case where the input is not an array
+      throw new Error(
+        'Input must be an array or a valid JSON string representing an array.'
+      );
+    }
+
+    const uniqueQueries = new Set<any>();
+    // Filter out duplicate queries
+    queryArray.forEach((query) => {
+      const queryStr = JSON.stringify(query);
+      uniqueQueries.add(queryStr);
+    });
+
+    // Convert the unique queries back to an array
+    const uniqueQueriesArray = Array.from(uniqueQueries);
+
+    const queryBuilders = uniqueQueriesArray.map((queryStr) => {
+      const query = JSON.parse(queryStr);
+      return {
+        config: this.config,
+        query: query,
+      };
+    });
+    this.queryName = queryName;
+    this.queryBuilders = queryBuilders;
+  }
+
   setFieldsForMongoDB(metadata: Metadata): void {
     const { fields: queryBuilderConfigFields } = this.config;
 
@@ -484,7 +589,8 @@ export class ConnectFormComponent implements OnInit {
       this.tableNames.push(tableName);
       columns.forEach((column: string) => {
         const columnData = table[column];
-        const columnType = this.getColumnType(columnData);
+        const columnType =
+          this.sharedDatabasesService.getColumnType(columnData);
         const field: Field = {
           name: column,
           type: this.databaseService.getCollectionTypeValue(columnType),
@@ -498,7 +604,7 @@ export class ConnectFormComponent implements OnInit {
     }
   }
 
-  private setFieldsForPostgreSQL(metadata: Metadata): void {
+  setFieldsForPostgreSQL(metadata: Metadata): void {
     const { fields: queryBuilderConfigFields } = this.config;
 
     for (const [tableName, table] of Object.entries(metadata)) {
@@ -507,7 +613,8 @@ export class ConnectFormComponent implements OnInit {
 
       columns.forEach((column: string) => {
         const columnData = table[column];
-        const columnType = this.getColumnType(columnData);
+        const columnType =
+          this.sharedDatabasesService.getColumnType(columnData);
         const field: Field = {
           name: column,
           type: this.databaseService.mapPostgresTypeToQueryBuilderType(
@@ -522,78 +629,82 @@ export class ConnectFormComponent implements OnInit {
       });
     }
   }
-  getColumnType(column: any): string {
-    if (Array.isArray(column)) {
-      return column.length > 0 ? column[0] : 'unknown';
-    } else if (column && typeof column === 'object') {
-      if (column.hasOwnProperty('columnType')) {
-        return this.getColumnType(column.columnType);
-      } else if (column.hasOwnProperty('fieldType')) {
-        return this.getColumnType(column.fieldType);
-      } else if (column.hasOwnProperty('dataType')) {
-        return column.dataType.toLowerCase();
-      } else {
-        return 'unknown';
-      }
-    } else if (typeof column === 'string') {
-      return column;
-    } else {
-      return 'unknown';
-    }
-  }
 
   getTableNames(data: any): string[] {
     return Object.keys(data);
   }
 
-  toggleYAxisColumn(index: number) {
-    this.convertToChartData();
-  }
-  toggleXAxisColumn() {
-    this.convertToChartData();
+  getColumnNamesOfTypeNumber(metadata: Metadata): string[] {
+    const numberColumnNames: string[] = [];
+
+    for (const [, table] of Object.entries(metadata)) {
+      const columns = this.getTableNames(table);
+      columns.forEach((column: string) => {
+        const columnData = table[column];
+        const columnType =
+          this.sharedDatabasesService.getColumnType(columnData);
+
+        const isNumberColumn =
+          (this.selectedDatabaseType === 'mongodb' &&
+            this.databaseService.getCollectionTypeValue(columnType) ===
+              'number') ||
+          (this.selectedDatabaseType === 'postgresql' &&
+            this.databaseService.mapPostgresTypeToQueryBuilderType(
+              columnType
+            ) === 'number');
+
+        if (isNumberColumn) {
+          numberColumnNames.push(column);
+        }
+      });
+    }
+
+    return numberColumnNames;
   }
 
   getColumnValues(columnType: any): any[] {
+    let values: any[] = [];
+
     if (Array.isArray(columnType)) {
-      return columnType.length > 0 ? columnType.slice(1) : [];
+      values = columnType.length > 0 ? columnType.slice(1) : [];
     } else if (columnType && typeof columnType === 'object') {
-      return columnType.hasOwnProperty('columnValues')
-        ? columnType.columnValues
-        : columnType.hasOwnProperty('fieldValues')
-        ? columnType.fieldValues
-        : [];
-    } else {
-      return [];
-    }
-  }
-
-  isDataValid(field: string, value: any): boolean {
-    if (!this.result) {
-      return false;
-    }
-
-    for (const tableName in this.result) {
-      if (this.result.hasOwnProperty(tableName)) {
-        const table = this.result[tableName];
-        if (table.hasOwnProperty(field)) {
-          const columnValues = table[field];
-          if (this.isValueInColumnValues(columnValues, value)) {
-            return true;
-          }
-        }
+      if (columnType.hasOwnProperty('columnValues')) {
+        values = columnType.columnValues;
+      } else if (columnType.hasOwnProperty('fieldValues')) {
+        values = columnType.fieldValues;
       }
     }
-
-    return false;
+    // Remove duplicates by using a Set
+    return [...new Set(values)];
+  }
+  fillConnectionForm(database: any) {
+    this.selectedDatabaseType = database.type;
+    this.databaseName = database.databaseName;
+    this.url = database.url;
   }
 
-  isValueInColumnValues(columnValues: any, value: any): boolean {
-    if (Array.isArray(columnValues.columnValues)) {
-      const stringValues = columnValues.columnValues.map(String);
-      const stringValue = String(value);
-      return stringValues.includes(stringValue);
+  executeQueryBuilder() {
+    if (this.yAxisColumnNamesArrays[0].length === 0) {
+      this.toastr.error('Error: Select Y Axe and X Axe', 'Error', {
+        positionClass: 'toast-top-center',
+      });
+    }
+    this.convertDataToChart();
+  }
+  toggleButtonActivation(buttonNumber: number) {
+    const canvas = document.getElementById('myChart') as HTMLCanvasElement;
+    const existingChart = Chart.getChart(canvas);
+
+    if (buttonNumber === 1) {
+      this.isPieButtonActivated = !this.isPieButtonActivated;
+      this.isLineButtonActivated = false;
+    } else if (buttonNumber === 2) {
+      this.isLineButtonActivated = !this.isLineButtonActivated;
+      this.isPieButtonActivated = false;
     }
 
-    return false;
+    if (existingChart) {
+      this.convertDataToChart();
+    }
   }
 }

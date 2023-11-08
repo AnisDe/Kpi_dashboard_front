@@ -43,7 +43,6 @@ export class MongoDatabaseService {
   convertRuleForCollection(rule: any): any {
     console.log(rule);
 
-    // Check if the rule has a 'condition' property and an array of 'rules'
     if ('condition' in rule && Array.isArray(rule.rules)) {
       const operator = rule.condition === 'and' ? '$and' : '$or';
 
@@ -57,10 +56,23 @@ export class MongoDatabaseService {
             const operator = this.getMongoOperator(ruleOrQuery.operator);
             const value = ruleOrQuery.value;
 
-            if (operator && field && value !== undefined) {
-              const condition: any = {};
-              condition[field] = { [operator]: value };
-              return condition;
+            if (operator && field) {
+              if (value !== undefined) {
+                const condition: any = {};
+
+                // Check if the field is a date field
+                if (this.isDateField(field)) {
+                  condition[field] = {
+                    [operator]: new Date(value), // Convert to MongoDB date without toISOString
+                  };
+                } else {
+                  condition[field] = { [operator]: value };
+                }
+
+                return condition;
+              } else {
+                return {};
+              }
             } else {
               return {};
             }
@@ -68,8 +80,13 @@ export class MongoDatabaseService {
         }),
       };
     } else {
-      return {}; // Return an empty object for unsupported rule structures
+      return {};
     }
+  }
+
+  // Example method to check if a field is a date field
+  isDateField(field: string): boolean {
+    return field.toLowerCase().includes('date');
   }
 
   getMongoOperator(operator: string): string | undefined {
@@ -115,8 +132,12 @@ export class MongoDatabaseService {
   //   return this.http.post<any>(urlEndpoint, body);
   // }
 
-  executeSQL(connectionString: string, query: string) {
-    const response = this.executeQuery(connectionString, query);
+  executeSQL(
+    connectionString: string,
+    query: string,
+    queryName: string
+  ): Observable<any> {
+    const response = this.executeQuery(connectionString, query, queryName);
     response.subscribe(
       (result) => {
         console.log('SQL response:', result);
@@ -129,9 +150,15 @@ export class MongoDatabaseService {
     return response;
   }
 
-  executeQuery(connectionString: string, query: string): Observable<any> {
+  executeQuery(
+    connectionString: string,
+    query: string,
+    queryName: string
+  ): Observable<any> {
     const urlEndpoint = `${this.baseUrl}/executeMongoQuery`; // Adjust the URL if needed
-    const body = { connectionString, query: JSON.stringify(query) }; // Convert the query to a string
+    const body = { queryName, connectionString, query: JSON.stringify(query) }; // Convert the query to a string
+    console.log(body);
+
     return this.http.post<any>(urlEndpoint, body);
   }
 
@@ -139,7 +166,7 @@ export class MongoDatabaseService {
     // Define mappings for different column types
     switch (columnType) {
       case 'Date':
-        return 'Date';
+        return 'date';
       case 'Boolean':
         return 'boolean';
       case 'Null':
@@ -169,5 +196,35 @@ export class MongoDatabaseService {
       default:
         return 'any';
     }
+  }
+
+  saveQuery(
+    connectionString: string,
+    query: string,
+    queryName: string
+  ): Observable<any> {
+    const response = this.saveQuerry(connectionString, query, queryName);
+    response.subscribe(
+      (result) => {
+        console.log('Query saved', result);
+      },
+      (error) => {
+        console.error('Query not saved', error);
+      }
+    );
+
+    return response;
+  }
+
+  saveQuerry(
+    connectionString: string,
+    query: string,
+    queryName: string
+  ): Observable<any> {
+    const urlEndpoint = `${this.baseUrl}/saveMongoQuery`; // Adjust the URL if needed
+    const body = { queryName, connectionString, query }; // Convert the query to a string
+    console.log(body);
+
+    return this.http.post<any>(urlEndpoint, body);
   }
 }

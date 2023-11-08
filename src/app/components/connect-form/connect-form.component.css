@@ -1,11 +1,5 @@
-body {
-  font-family: Arial, sans-serif;
-  background-color: #f1f1f1;
-}
-
 .container {
-  max-width: 800px;
-  margin: 0 auto;
+  margin: 15px auto;
   padding: 20px;
   background-color: #fff;
   border-radius: 5px;
@@ -49,22 +43,6 @@ input[type="password"] {
   color: #333;
 }
 
-button[type="submit"] {
-  padding: 10px 20px;
-  background-color: #4caf50;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  width: 100%;
-  font-size: 16px;
-  transition: background-color 0.3s;
-}
-
-button[type="submit"]:hover {
-  background-color: #45a049;
-}
-
 .loading,
 .error {
   margin-top: 10px;
@@ -76,28 +54,15 @@ button[type="submit"]:hover {
   padding: 10px;
   border-radius: 4px;
 }
-
-table {
-  border-collapse: collapse;
-  width: 100%;
-  margin-bottom: 20px;
+.table-wrapper {
+  max-height: 350px;
+  overflow: auto;
+  display: inline-block;
 }
-
-th,
-td {
-  padding: 12px 16px;
-  text-align: left;
+.queryTable-wrapper {
+  max-height: 300px;
+  overflow: auto;
 }
-
-th {
-  background-color: #4caf50;
-  color: white;
-}
-
-tbody tr:nth-child(even) {
-  background-color: #f2f2f2;
-}
-
 select {
   padding: 8px;
   border: 1px solid #ccc;
@@ -110,12 +75,29 @@ select {
 .query-builder {
   margin-top: 20px;
 }
+.table-wrapper {
+  max-height: 413px;
+  border-radius: 4px;
+}
 
-/* Responsive styles */
-@media screen and (max-width: 600px) {
-  .container {
-    max-width: 100%;
-    padding: 10px;
-    border-radius: 0;
-  }
+.pie-chart-button {
+  background-color: #fff;
+  border: 2px solid #2980b9;
+  border-radius: 10px;
+  padding: 10px;
+
+  /* Hover effect */
+  transition: background-color 0.3s;
+}
+
+.pie-chart-button img {
+  max-width: 100%;
+  display: block;
+}
+
+.pie-chart-button:hover {
+  background-color: #2980b9;
+}
+.pie-chart-button.activated {
+  background-color: #3498db;
 }

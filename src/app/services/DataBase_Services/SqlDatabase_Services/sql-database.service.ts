@@ -15,7 +15,6 @@ export class SqlDatabaseService {
     query: { condition: string; rules: any[] }
   ): string {
     let sqlQueries = [];
-    console.log(query);
     for (const tableName of tableNames) {
       let sqlQuery = `SELECT * FROM "${tableName}"`;
 
@@ -76,9 +75,12 @@ export class SqlDatabaseService {
       return value.toString();
     }
   }
-
-  executeSQL(query: string) {
-    const response = this.executeQuery(query);
+  executeSQL(
+    queryName: string,
+    query: string,
+    condition: string
+  ): Observable<any> {
+    const response = this.executeQuery(queryName, query, condition);
     response.subscribe(
       (result) => {
         console.log('SQL response:', result);
@@ -91,9 +93,13 @@ export class SqlDatabaseService {
     return response;
   }
 
-  executeQuery(query: string): Observable<any> {
+  executeQuery(
+    queryName: string,
+    query: string,
+    queryBuilders: string
+  ): Observable<any> {
     const urlEndpoint = `${this.baseUrl}/query`;
-    const body = { query };
+    const body = { query, queryBuilders, queryName };
     return this.http.post<any>(urlEndpoint, body);
   }
 
@@ -122,5 +128,34 @@ export class SqlDatabaseService {
       default:
         return 'unknown';
     }
+  }
+
+  saveQuery(
+    queryName: string,
+    query: string,
+    condition: string
+  ): Observable<any> {
+    const response = this.saveQueryy(queryName, query, condition);
+    response.subscribe(
+      (result) => {
+        console.log('Query saved', result);
+      },
+      (error) => {
+        console.error('Query not saved', error);
+      }
+    );
+
+    return response;
+  }
+
+  saveQueryy(
+    queryName: string,
+    query: string,
+    queryBuilders: string
+  ): Observable<any> {
+    const urlEndpoint = `${this.baseUrl}/saveQuery`;
+    console.log('first');
+    const body = { query, queryBuilders, queryName };
+    return this.http.post<any>(urlEndpoint, body);
   }
 }
