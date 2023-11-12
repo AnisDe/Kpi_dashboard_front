@@ -4,52 +4,110 @@
 <div class="main-content">
   <div class="container">
     <div *ngIf="!result">
-      <h1>Connection Form</h1>
-      <form (ngSubmit)="onConnect()" #connectForm="ngForm">
-        <select
-          [(ngModel)]="selectedDatabaseType"
-          class="custom-select"
-          name="selectedDatabaseType"
-          required
-        >
-          <option value="">-- Select a database type --</option>
-          <option value="mongodb">MongoDB</option>
-          <option value="postgresql">PostgreSQL</option>
-        </select>
-        <label>
-          Database Name:
-          <input
-            type="text"
-            [(ngModel)]="databaseName"
-            name="databaseName"
-            required
-          />
-        </label>
-        <label>
-          Database URL:
-          <input type="text" [(ngModel)]="url" name="url" required />
-        </label>
-        <label>
-          Username:
-          <input type="text" [(ngModel)]="username" name="username" required />
-        </label>
-        <label>
-          Password:
-          <input
-            type="password"
-            [(ngModel)]="password"
-            name="password"
-            required
-          />
-        </label>
-        <button class="btn btn-primary" type="submit" [disabled]="loading">
-          Connect
-        </button>
-      </form>
-      <div *ngIf="loading" class="loading">Connecting...</div>
-      <div *ngIf="error" class="error">{{ error }}</div>
-    </div>
+      <div class="row">
+        <div class="col-xl-6">
+          <h1>Connection Form</h1>
+          <form (ngSubmit)="onConnect()" #connectForm="ngForm">
+            <select
+              [(ngModel)]="selectedDatabaseType"
+              class="custom-select"
+              name="selectedDatabaseType"
+              required
+            >
+              <option value="">-- Select a database type --</option>
+              <option value="mongodb">MongoDB</option>
+              <option value="postgresql">PostgreSQL</option>
+            </select>
+            <label>
+              Database Name:
+              <input
+                type="text"
+                [(ngModel)]="databaseName"
+                name="databaseName"
+                required
+              />
+            </label>
+            <label>
+              Database URL:
+              <input type="text" [(ngModel)]="url" name="url" required />
+            </label>
+            <label>
+              Username:
+              <input
+                type="text"
+                [(ngModel)]="username"
+                name="username"
+                required
+              />
+            </label>
+            <label>
+              Password:
+              <input
+                type="password"
+                [(ngModel)]="password"
+                name="password"
+                required
+              />
+            </label>
+            <button
+              class="btn btn-primary btn-lg btn-block"
+              type="submit"
+              [disabled]="loading"
+            >
+              Connect
+            </button>
+          </form>
+          <div *ngIf="loading" class="loading">Connecting...</div>
+          <div *ngIf="error" class="error">{{ error }}</div>
+        </div>
+        <div class="col-xl-6" style="padding-top: 55px">
+          <div *ngIf="databases && databases.length > 0">
+            <div class="card shadow">
+              <div class="table-responsive">
+                <div class="table-actions">
+                  <div class="DbTable-wrapper">
+                    <table class="table align-items-center table-striped">
+                      <thead class="thead-light">
+                        <tr>
+                          <th>Database Name</th>
+                          <th>URL</th>
+                          <th>Type</th>
+                        </tr>
+                      </thead>
+                      <tr
+                        *ngFor="let database of databases"
+                        [ngClass]="{ 'not-clickable': result }"
+                        (click)="!result ? fillConnectionForm(database) : null"
+                      >
+                        <td>{{ database.databaseName }}</td>
+                        <td>{{ database.url }}</td>
+                        <td>{{ database.type }}</td>
+                      </tr>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
 
+            <img
+              src="assets/Numeryx_Smart_innovation.png"
+              alt=""
+              height="160px"
+              width="630px"
+              style="margin-top: 10px"
+            />
+          </div>
+          <div *ngIf="!databases">
+            <img
+              src="assets/Numeryx_Smart_innovation.png"
+              alt=""
+              height="350px"
+              width="500px"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
     <div *ngIf="result">
       <div class="row">
         <!-- Chart Column (col-xl-9 for larger width) -->
@@ -62,12 +120,12 @@
                   <ul class="nav nav-pills justify-content-end">
                     <li class="nav-item mr-2 mr-md-0">
                       <button
-                        class="pie-chart-button"
-                        [class.activated]="isPieButtonActivated"
-                        (click)="toggleButtonActivation(1)"
+                        class="type-chart-button"
+                        [class.activated]="isLineButtonActivated"
+                        (click)="toggleButtonActivation(2)"
                       >
                         <img
-                          src="https://www.iconpacks.net/icons/1/free-pie-chart-icon-683-thumb.png"
+                          src="https://i.pinimg.com/originals/31/90/3c/31903ce33af0dee5ee82a91e6694badb.png"
                           height="28"
                           width="28"
                           alt=""
@@ -76,12 +134,12 @@
                     </li>
                     <li class="nav-item">
                       <button
-                        class="pie-chart-button"
-                        [class.activated]="isLineButtonActivated"
-                        (click)="toggleButtonActivation(2)"
+                        class="type-chart-button"
+                        [class.activated]="isPieButtonActivated"
+                        (click)="toggleButtonActivation(1)"
                       >
                         <img
-                          src="https://i.pinimg.com/originals/31/90/3c/31903ce33af0dee5ee82a91e6694badb.png"
+                          src="https://www.iconpacks.net/icons/1/free-pie-chart-icon-683-thumb.png"
                           height="28"
                           width="28"
                           alt=""
@@ -107,53 +165,57 @@
 
         <!-- Table Column (col-xl-3 for smaller width) -->
         <div class="col-xl-5">
-          <div class="card-header border-0">
-            <div class="row align-items-center">
-              <div class="col">
-                <h3 class="mb-0">Database content</h3>
+          <div class="card shadow">
+            <div class="card-header border-0">
+              <div class="row align-items-center">
+                <div class="col">
+                  <h3 class="mb-0">Database content</h3>
+                </div>
               </div>
             </div>
-          </div>
-          <div class="table-wrapper">
-            <table
-              *ngIf="result"
-              class="table align-items-center table-striped"
-            >
-              <thead class="thead-light">
-                <tr>
-                  <th>Table Name</th>
-                  <th>Column Name</th>
-                  <th>Column Values</th>
-                </tr>
-              </thead>
-              <tbody>
-                <ng-container *ngFor="let tableName of getTableNames(result)">
-                  <ng-container
-                    *ngFor="let columnName of getTableNames(result[tableName])"
-                  >
-                    <tr>
-                      <td>{{ tableName }}</td>
-                      <td>{{ columnName }}</td>
-                      <td>
-                        <div class="input-group">
-                          <select class="custom-select">
-                            <option
-                              *ngFor="
-                                let value of getColumnValues(
-                                  result[tableName][columnName]
-                                )
-                              "
-                            >
-                              {{ value }}
-                            </option>
-                          </select>
-                        </div>
-                      </td>
-                    </tr>
+            <div class="table-wrapper">
+              <table
+                *ngIf="result"
+                class="table align-items-center table-striped"
+              >
+                <thead class="thead-light">
+                  <tr>
+                    <th>Table Name</th>
+                    <th>Column Name</th>
+                    <th>Column Values</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <ng-container *ngFor="let tableName of getTableNames(result)">
+                    <ng-container
+                      *ngFor="
+                        let columnName of getTableNames(result[tableName])
+                      "
+                    >
+                      <tr>
+                        <td>{{ tableName }}</td>
+                        <td>{{ columnName }}</td>
+                        <td>
+                          <div class="input-group">
+                            <select class="custom-select">
+                              <option
+                                *ngFor="
+                                  let value of getColumnValues(
+                                    result[tableName][columnName]
+                                  )
+                                "
+                              >
+                                {{ value }}
+                              </option>
+                            </select>
+                          </div>
+                        </td>
+                      </tr>
+                    </ng-container>
                   </ng-container>
-                </ng-container>
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -186,23 +248,57 @@
                     <th>Conditions</th>
                     <th>Database Name</th>
                     <th>Database URL</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr
-                    scope="row"
-                    *ngFor="let item of filteredData"
-                    (click)="
-                      createQueryBuildersFromQueries(item.conditions, item.name)
-                    "
-                  >
-                    <td>{{ item.name }}</td>
-                    <td>{{ item.conditions | slice : 0 : 15 }}</td>
-                    <td>{{ item.database.databaseName }}</td>
-                    <td>
+                  <tr scope="row" *ngFor="let item of filteredData">
+                    <td
+                      (click)="
+                        createQueryBuildersFromQueries(
+                          item.conditions,
+                          item.name
+                        )
+                      "
+                    >
+                      {{ item.name }}
+                    </td>
+                    <td
+                      (click)="
+                        createQueryBuildersFromQueries(
+                          item.conditions,
+                          item.name
+                        )
+                      "
+                    >
+                      {{ item.conditions | slice : 0 : 15 }}
+                    </td>
+                    <td
+                      (click)="
+                        createQueryBuildersFromQueries(
+                          item.conditions,
+                          item.name
+                        )
+                      "
+                    >
+                      {{ item.database.databaseName }}
+                    </td>
+                    <td
+                      (click)="
+                        createQueryBuildersFromQueries(
+                          item.conditions,
+                          item.name
+                        )
+                      "
+                    >
                       <a class="disabled" href="{{ item.database.url }}"
                         >Database url de {{ item.name }}</a
                       >
+                    </td>
+                    <td>
+                      <button (click)="onDeleteQuery(item.id)">
+                        Delete Query
+                      </button>
                     </td>
                   </tr>
                 </tbody>
@@ -214,8 +310,8 @@
       </div>
     </div>
     <div *ngIf="result">
-      <div class="container">
-        <div class="queryBuilderContainer">
+      <div class="queryBuilderContainer">
+        <div *ngIf="queryBuilders.length != 0">
           <label for="queryName">Query Name:</label>
           <input
             type="text"
@@ -224,36 +320,40 @@
             placeholder="Enter query name"
             required
           />
+
           <div *ngFor="let queryBuilder of queryBuilders; let i = index">
-            <div>
-              <div *ngIf="queryBuilder.config">
-                <button class="btn btn-danger" (click)="removeQueryBuilder(i)">
-                  Remove
-                </button>
-                <query-builder
-                  [(ngModel)]="queryBuilder.query"
-                  [config]="queryBuilder.config"
-                  (change)="onQueryChange(i)"
-                ></query-builder>
-                <div class="row">
-                  <div class="col-md-6"></div>
-                  <div class="col-md-6">
-                    <div class="form-group text-md-right"></div>
-                  </div>
+            <div *ngIf="queryBuilder.config">
+              <button class="btn btn-danger" (click)="removeQueryBuilder(i)">
+                Remove
+              </button>
+              <query-builder
+                [(ngModel)]="queryBuilder.query"
+                [config]="queryBuilder.config"
+                (change)="onQueryChange(i)"
+              ></query-builder>
+              <div class="row">
+                <div class="col-md-6"></div>
+                <div class="col-md-6">
+                  <div class="form-group text-md-right"></div>
                 </div>
               </div>
             </div>
           </div>
-          <button
-            class="btn btn-primary"
-            style="display: inline"
-            (click)="addQueryBuilder()"
-          >
-            Add Query Builder
-          </button>
+        </div>
+        <button
+          class="btn btn-primary"
+          style="display: inline"
+          (click)="addQueryBuilder()"
+        >
+          Add Query Builder
+        </button>
+        <div *ngIf="queryBuilders.length != 0">
+          <br />
           <button class="btn btn-primary" (click)="executeQueryBuilder()">
             Execute Query
           </button>
+        </div>
+        <div *ngIf="queryBuilders.length != 0">
           <div class="container">
             <div
               *ngFor="let yAxisArray of yAxisColumnNamesArrays; let i = index"
@@ -306,47 +406,13 @@
                   </ng-container>
                 </select>
               </div>
-              <button
-                class="btn btn-danger"
-                (click)="disconnectFromDatabase(url)"
-              >
-                Disconnect
-              </button>
             </div>
-          </div>
-          <div *ngIf="error" class="error">{{ error }}</div>
-        </div>
-      </div>
-    </div>
-
-    <div *ngIf="!result">
-      <div class="container">
-        <div class="table-responsive">
-          <div *ngIf="databases.length > 0">
-            <div class="table-actions">
-              <table class="table align-items-center table-striped">
-                <thead class="thead-light">
-                  <tr>
-                    <th>Database Name</th>
-                    <th>URL</th>
-                    <th>Type</th>
-                  </tr>
-                </thead>
-                <tr
-                  *ngFor="let database of databases"
-                  [ngClass]="{ 'not-clickable': result }"
-                  (click)="!result ? fillConnectionForm(database) : null"
-                >
-                  <td>{{ database.databaseName }}</td>
-                  <td>{{ database.url }}</td>
-                  <td>{{ database.type }}</td>
-                </tr>
-              </table>
-
-              <div *ngIf="databases.length === 0"></div>
-            </div>
+            <div *ngIf="error" class="error">{{ error }}</div>
           </div>
         </div>
+        <button class="btn btn-danger" (click)="disconnectFromDatabase(url)">
+          Disconnect
+        </button>
       </div>
     </div>
   </div>

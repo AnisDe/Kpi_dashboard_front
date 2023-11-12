@@ -1,8 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { SqlDatabaseService } from '../../services/DataBase_Services/SqlDatabase_Services/sql-database.service';
 import { MongoDatabaseService } from 'src/app/services/DataBase_Services/MongoDatabase_Services/mongo-database.service';
 import { Field, QueryBuilderConfig } from 'ngx-angular-query-builder';
-import { Observable, interval } from 'rxjs';
+import { Observable, catchError, interval, throwError } from 'rxjs';
 
 import Chart from 'chart.js/auto';
 import { QueryBuilderService } from 'src/app/services/QueryBuilder_Services/query-builder.service';
@@ -69,7 +69,8 @@ export class ConnectFormComponent implements OnInit {
     private chartService: ChartService,
     private sharedDatabasesService: SharedDatabasesService,
     private http: HttpClient,
-    private toastr: ToastrService
+    private toastr: ToastrService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
@@ -103,7 +104,13 @@ export class ConnectFormComponent implements OnInit {
       fields: {},
     };
   }
-
+  convertDataToChart() {
+    if (this.isPieButtonActivated) {
+      this.convertDataToPieChart();
+    } else if (this.isLineButtonActivated) {
+      this.convertDataToLineChart();
+    }
+  }
   addYAxisInput(): void {
     this.yAxisColumnNamesArrays.push(['']);
   }
@@ -190,6 +197,11 @@ export class ConnectFormComponent implements OnInit {
         );
         sessionStorage.setItem('databaseName', this.databaseName);
         this.refreshQuerys();
+        // const chartDataString = sessionStorage.getItem('chartData');
+        // const chartData = chartDataString ? JSON.parse(chartDataString) : null;
+        // if (chartData !== null) {
+        //   this.chartService.createChart(chartData);
+        // }
         // interval(10000).subscribe(() => {
         //   this.refreshData();
         // });
@@ -222,6 +234,7 @@ export class ConnectFormComponent implements OnInit {
     this.sharedDatabasesService.getFilteredData().subscribe((data) => {
       console.log(data);
       this.filteredData = data;
+      this.cdr.detectChanges();
     });
   }
 
@@ -307,7 +320,6 @@ export class ConnectFormComponent implements OnInit {
     let completedQueries = 0;
     let sqlQuery: string; // Declare sqlQuery here
     let mongoQuery: string; // Declare mongoQuery here
-
     const processQueryBuilders = (index: number) => {
       if (index >= this.queryBuilders.length) {
         this.chartService.createPieChart(canvas, labels, dataPoints);
@@ -368,6 +380,7 @@ export class ConnectFormComponent implements OnInit {
 
       response.subscribe(
         async (data) => {
+          //console.log( this.queryBuilders[0].query.rules[0].value);
           const yAxisColumnName = this.yAxisColumnNamesArrays[0][0];
           const yAxisColumnNameValues = await this.selectVariableValues(
             response,
@@ -375,8 +388,12 @@ export class ConnectFormComponent implements OnInit {
           );
 
           const maxValue = Math.max(...yAxisColumnNameValues);
+          const rules = queryBuilder.query.rules;
 
-          labels.push(yAxisColumnName);
+          if (rules.length > 0) {
+            const firstRuleValue = rules[0].value;
+            labels.push(firstRuleValue);
+          }
           dataPoints.push(maxValue);
 
           completedQueries++;
@@ -391,13 +408,7 @@ export class ConnectFormComponent implements OnInit {
 
     processQueryBuilders(0);
   }
-  convertDataToChart() {
-    if (this.isPieButtonActivated) {
-      this.convertDataToPieChart();
-    } else if (this.isLineButtonActivated) {
-      this.convertDataToLineChart();
-    }
-  }
+
   convertDataToLineChart(): void {
     const canvas = this.initializeChartCanvas();
     if (!canvas) {
@@ -494,6 +505,7 @@ export class ConnectFormComponent implements OnInit {
 
           for (const yAxisColumnNames of this.yAxisColumnNamesArrays) {
             const yAxisColumnName = yAxisColumnNames[0];
+
             const yAxisColumnNameValues = await this.selectVariableValues(
               response,
               yAxisColumnName
@@ -514,13 +526,24 @@ export class ConnectFormComponent implements OnInit {
               });
             }
 
-            allDatasets.push({
-              label: yAxisColumnNames.join(', '),
-              data: dataPoints,
-              backgroundColor: color, // Use the same color for background
-              borderColor: color, // Use the same color for border
-              beginAtZero: true,
-            });
+            const rules = queryBuilder.query.rules;
+
+            if (rules.length > 0) {
+              const firstRuleValue = rules[0].value;
+              labels.push(firstRuleValue);
+
+              allDatasets.push({
+                label: firstRuleValue,
+                data: dataPoints,
+                backgroundColor: color,
+                borderColor: color,
+                beginAtZero: true,
+              });
+            } else {
+              console.error(
+                'No rules found in the query. Skipping this dataset.'
+              );
+            }
           }
           completedQueries++;
 
@@ -706,5 +729,29 @@ export class ConnectFormComponent implements OnInit {
     if (existingChart) {
       this.convertDataToChart();
     }
+  }
+
+  deleteQueryById(queryId: number): Observable<any> {
+    const url = `${this.baseUrl}/queries/${queryId}`;
+    return this.http.delete(url);
+  }
+  onDeleteQuery(queryId: number): void {
+    this.deleteQueryById(queryId)
+      .pipe(
+        catchError((error) => {
+          console.error('Error deleting query', error);
+          // Handle error, e.g., display an error message to the user
+          return throwError(error);
+        })
+      )
+      .subscribe((response) => {
+        console.log('Query deleted successfully', response);
+
+        // Remove the deleted item from filteredData
+        this.refreshQuerys();
+
+        // Manually trigger change detection
+        this.cdr.detectChanges();
+      });
   }
 }

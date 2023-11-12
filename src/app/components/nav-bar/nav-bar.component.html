@@ -1,5 +1,5 @@
 <nav
-  class="navbar bg-gradient-success navbar-top navbar-expand-md navbar-dark"
+  class="navbar bg-gradient-info navbar-top navbar-expand-md navbar-dark"
   id="navbar-main"
 >
   <div class="container-fluid">
@@ -7,7 +7,9 @@
     <a
       class="h4 mb-0 text-uppercase d-none d-lg-inline-block"
       routerLinkActive="active"
-      >Dashboard</a
+    >
+      <img src="assets/Numeryx.png" alt="" srcset="" height="65" width="65" />
+      Dashboard</a
     >
 
     <!-- User -->
@@ -15,14 +17,24 @@
       <li class="nav-item" ngbDropdown placement="bottom-right">
         <a class="nav-link pr-0" role="button" ngbDropdownToggle>
           <div class="media align-items-center">
-            <span class="avatar avatar-sm rounded-circle">
-              <img
-                alt="Image placeholder"
-                src="https://fastly.picsum.photos/id/733/200/300.jpg?hmac=JYkTVVdGOo8BnLPxu1zWliHFvwXKurY-uTov5YiuX2s"
-              />
+            <span class="avatar avatar-lg">
+              <div class="profile-image">
+                <div class="square">
+                  {{ firstName.charAt(0).toUpperCase()
+                  }}{{ lastName.charAt(0).toUpperCase() }}
+                </div>
+              </div>
             </span>
             <div class="media-body ml-2 d-none d-lg-block">
-              <span class="mb-0 text-sm font-weight-bold"> {{ username }}</span>
+              <span class="mb-0 text-sm font-weight-bold">
+                {{
+                  firstName.charAt(0).toUpperCase() +
+                    firstName.slice(1) +
+                    " " +
+                    lastName.charAt(0).toUpperCase() +
+                    lastName.slice(1)
+                }}</span
+              >
             </div>
           </div>
         </a>

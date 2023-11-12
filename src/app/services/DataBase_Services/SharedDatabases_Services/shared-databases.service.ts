@@ -54,17 +54,20 @@ export class SharedDatabasesService {
       map(
         (
           data: {
-            name: any;
+            id: number; // Include the 'id' property in the response
+            name: string;
             conditions: any;
             database: { databaseName: any; url: any; type: any };
           }[]
         ) =>
           data.map(
             (item: {
-              name: any;
+              id: number; // Include the 'id' property in the item
+              name: string;
               conditions: any;
               database: { databaseName: any; url: any; type: any };
             }) => ({
+              id: item.id, // Assign the 'id' property to the resulting object
               name: item.name,
               conditions: item.conditions,
               database: {
@@ -78,6 +81,10 @@ export class SharedDatabasesService {
       tap((result) => {
         if (result.length === 0) {
           console.log('No logged queries');
+        } else {
+          result.forEach((query) => {
+            console.log('Query ID:', query.id);
+          });
         }
       }),
       catchError((error) => {

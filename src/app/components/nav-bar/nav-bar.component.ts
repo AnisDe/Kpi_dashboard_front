@@ -8,20 +8,19 @@ import { KeycloakService } from 'keycloak-angular';
 })
 export class NavBarComponent implements OnInit {
   username = '';
-
+  firstName = '';
+  lastName = '';
   constructor(private keycloakService: KeycloakService) {}
   getUserAttributes() {
     if (this.keycloakService) {
-      const userName =
+      this.username =
         this.keycloakService.getKeycloakInstance().tokenParsed?.['name'];
-
-      if (userName) {
-        const details = {
-          userName: userName,
-        };
-        this.username = userName;
-      }
+      this.firstName =
+        this.keycloakService.getKeycloakInstance().tokenParsed?.['given_name'];
+      this.lastName =
+        this.keycloakService.getKeycloakInstance().tokenParsed?.['family_name'];
     }
+    console.log(this.username, this.firstName, this.lastName);
   }
 
   ngOnInit(): void {

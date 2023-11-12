@@ -72,12 +72,13 @@ export class ChartService {
   }
 
   processChart(allDatasets: any, labels: any, ctx: any) {
+    console.log(labels);
+
     if (allDatasets.length > 0) {
       const chartData = {
         labels: labels,
         datasets: allDatasets,
       };
-
       const chartDataString = JSON.stringify(chartData);
 
       sessionStorage.setItem('chartData', chartDataString);
@@ -124,6 +125,10 @@ export class ChartService {
               },
             },
           },
+          animation: {
+            duration: 1000, // Set the animation duration in milliseconds
+            easing: 'easeInOutQuart', // Choose an easing function (e.g., 'linear', 'easeOutCubic', etc.)
+          },
           scales: yAxesConfig as any,
           elements: {
             line: {
@@ -154,6 +159,23 @@ export class ChartService {
             backgroundColor: backgroundColors,
           },
         ],
+      },
+      options: {
+        animation: {
+          animateScale: true, // Enable scaling animation
+          animateRotate: true, // Enable rotation animation
+          duration: 1000, // Animation duration in milliseconds
+          easing: 'easeInOutQuart', // Easing function for the animation
+        },
+        hover: {
+          mode: 'nearest', // Interaction mode when hovering over the chart
+        },
+        plugins: {
+          legend: {
+            display: true, // Display the legend
+            position: 'top', // Legend position (top, bottom, left, right)
+          },
+        },
       },
     });
   }

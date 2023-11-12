@@ -7,11 +7,11 @@
 }
 
 .queryBuilderContainer {
-  max-width: 1200px;
-  margin: 0 auto;
   margin-top: 5px;
   padding: 20px;
   background-color: #fff;
+  border-radius: 5px;
+
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
 
@@ -63,6 +63,11 @@ input[type="password"] {
   max-height: 300px;
   overflow: auto;
 }
+.DbTable-wrapper {
+  max-width: 620px;
+  max-height: 250px;
+  overflow: auto;
+}
 select {
   padding: 8px;
   border: 1px solid #ccc;
@@ -76,11 +81,11 @@ select {
   margin-top: 20px;
 }
 .table-wrapper {
-  max-height: 413px;
+  max-height: 425px;
   border-radius: 4px;
 }
 
-.pie-chart-button {
+.type-chart-button {
   background-color: #fff;
   border: 2px solid #2980b9;
   border-radius: 10px;
@@ -90,14 +95,14 @@ select {
   transition: background-color 0.3s;
 }
 
-.pie-chart-button img {
+.type-chart-button img {
   max-width: 100%;
   display: block;
 }
 
-.pie-chart-button:hover {
+.type-chart-button:hover {
   background-color: #2980b9;
 }
-.pie-chart-button.activated {
+.type-chart-button.activated {
   background-color: #3498db;
 }

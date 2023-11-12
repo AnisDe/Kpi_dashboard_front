@@ -140,7 +140,7 @@ export class MongoDatabaseService {
     const response = this.executeQuery(connectionString, query, queryName);
     response.subscribe(
       (result) => {
-        console.log('SQL response:', result);
+        console.log('SQL response');
       },
       (error) => {
         console.error('Error executing SQL:', error);
