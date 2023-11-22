@@ -106,3 +106,7 @@ select {
 .type-chart-button.activated {
   background-color: #3498db;
 }
+
+.testt img:hover {
+  transform: scale(2); /* Change the scale factor based on your preference */
+}

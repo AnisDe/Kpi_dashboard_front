@@ -10,7 +10,7 @@ export class SqlDatabaseService {
 
   constructor(private http: HttpClient) {}
 
-  convertToSQL(
+  convertToPostgres(
     tableNames: string[],
     query: { condition: string; rules: any[] }
   ): string {
@@ -23,6 +23,26 @@ export class SqlDatabaseService {
           .map((rule) => this.generateCondition(rule))
           .join(` ${query.condition.toUpperCase()} `);
         sqlQuery += ` WHERE ${conditions}`;
+      }
+
+      sqlQueries.push(sqlQuery);
+    }
+
+    return sqlQueries.join('; ');
+  }
+  convertToSQL(
+    tableNames: string[],
+    query: { condition: string; rules: any[] }
+  ): string {
+    let sqlQueries = [];
+    for (const tableName of tableNames) {
+      let sqlQuery = `SELECT * FROM \`${tableName}\``;
+
+      if (query.rules.length > 0) {
+        let conditions = query.rules
+          .map((rule) => this.generateCondition(rule))
+          .join(` ${query.condition.toUpperCase()} `);
+        sqlQuery += ` WHERE ${conditions.replace(/"/g, '`')}`;
       }
 
       sqlQueries.push(sqlQuery);
@@ -105,9 +125,11 @@ export class SqlDatabaseService {
 
   mapPostgresTypeToQueryBuilderType(columnType: string): string {
     switch (columnType.toLowerCase()) {
+      case 'longtext':
       case 'varchar':
       case 'text':
         return 'string';
+      case 'int':
       case 'integer':
       case 'bigint':
       case 'smallint':
@@ -125,6 +147,17 @@ export class SqlDatabaseService {
       case 'timestamp':
       case 'timestamp without time zone':
         return 'datetime';
+      case 'char':
+      case 'tinytext':
+      case 'mediumtext':
+      case 'longtext':
+        return 'string';
+      case 'decimal':
+      case 'float':
+        return 'number';
+      case 'enum':
+      case 'set':
+        return 'string';
       default:
         return 'unknown';
     }

@@ -23,8 +23,6 @@ export class SharedDatabasesService {
       } else {
         return 'unknown';
       }
-    } else if (typeof column === 'string') {
-      return column;
     } else {
       return 'unknown';
     }

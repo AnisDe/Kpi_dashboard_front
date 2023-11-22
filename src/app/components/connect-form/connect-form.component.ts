@@ -18,7 +18,7 @@ import { ToastrService } from 'ngx-toastr';
   styleUrls: ['connect-form.component.css'],
 })
 export class ConnectFormComponent implements OnInit {
-  selectedDatabaseType: 'mongodb' | 'postgresql' | '' = '';
+  selectedDatabaseType: 'mongodb' | 'postgresql' | 'mysql' | '' = '';
   databaseName = '';
   url = '';
   username = '';
@@ -33,8 +33,8 @@ export class ConnectFormComponent implements OnInit {
   yAxisColumnName: string = '';
   queryName: string = '';
   filteredData: any[] = [];
-  isPieButtonActivated = false;
-  isLineButtonActivated = true;
+  pieButton = false;
+  lineButton = true;
   yAxisColumnNamesArrays: string[][] = [[]];
   private baseUrl = 'http://localhost:9090/tables';
   queryBuilderConfig!: QueryBuilderConfig;
@@ -84,6 +84,7 @@ export class ConnectFormComponent implements OnInit {
     if (storedToken) {
       const tokenUsername = this.extractUsernameFromKeycloakToken(storedToken);
       const storedLogedUsername = sessionStorage.getItem('logged_username');
+
       if (tokenUsername === storedLogedUsername) {
         // Token is valid, and it belongs to the same user
         this.sharedDatabasesService.getDataBases().subscribe((data) => {
@@ -105,9 +106,9 @@ export class ConnectFormComponent implements OnInit {
     };
   }
   convertDataToChart() {
-    if (this.isPieButtonActivated) {
+    if (this.pieButton) {
       this.convertDataToPieChart();
-    } else if (this.isLineButtonActivated) {
+    } else if (this.lineButton) {
       this.convertDataToLineChart();
     }
   }
@@ -171,7 +172,7 @@ export class ConnectFormComponent implements OnInit {
     if (this.selectedDatabaseType === 'mongodb') {
       this.databaseService = this
         .mongodbDatabaseService as MongoDatabaseService;
-    } else if (this.selectedDatabaseType === 'postgresql') {
+    } else if (this.selectedDatabaseType === 'postgresql' || 'mysql') {
       this.databaseService = this.sqlDatabaseService as SqlDatabaseService;
     }
 
@@ -185,6 +186,7 @@ export class ConnectFormComponent implements OnInit {
         this.loading = false;
         this.connectionString = this.url;
         this.result = data;
+        console.log(this.result);
         this.setFields(data);
 
         // Store values in sessionStorage
@@ -331,7 +333,7 @@ export class ConnectFormComponent implements OnInit {
               JSON.stringify(queryBuilders),
               this.queryName
             );
-          } else if (this.selectedDatabaseType === 'postgresql') {
+          } else if (this.selectedDatabaseType === 'postgresql' || 'mysql') {
             this.sqlDatabaseService.saveQuery(
               this.queryName,
               sqlQuery,
@@ -364,6 +366,16 @@ export class ConnectFormComponent implements OnInit {
           this.queryName
         );
       } else if (this.selectedDatabaseType === 'postgresql') {
+        sqlQuery = this.sqlDatabaseService.convertToPostgres(
+          this.tableNames,
+          query
+        );
+        response = this.sqlDatabaseService.executeSQL(
+          this.queryName,
+          sqlQuery,
+          JSON.stringify(queryBuilders)
+        );
+      } else if (this.selectedDatabaseType === 'mysql') {
         sqlQuery = this.sqlDatabaseService.convertToSQL(this.tableNames, query);
         response = this.sqlDatabaseService.executeSQL(
           this.queryName,
@@ -444,7 +456,7 @@ export class ConnectFormComponent implements OnInit {
               JSON.stringify(queryBuilders),
               this.queryName
             );
-          } else if (this.selectedDatabaseType === 'postgresql') {
+          } else if (this.selectedDatabaseType === 'postgresql' || 'mysql') {
             this.sqlDatabaseService.saveQuery(
               this.queryName,
               sqlQuery,
@@ -479,6 +491,16 @@ export class ConnectFormComponent implements OnInit {
           this.queryName
         );
       } else if (this.selectedDatabaseType === 'postgresql') {
+        sqlQuery = this.sqlDatabaseService.convertToPostgres(
+          this.tableNames,
+          query
+        );
+        response = this.sqlDatabaseService.executeSQL(
+          this.queryName,
+          sqlQuery,
+          JSON.stringify(queryBuilders)
+        );
+      } else if (this.selectedDatabaseType === 'mysql') {
         sqlQuery = this.sqlDatabaseService.convertToSQL(this.tableNames, query);
         response = this.sqlDatabaseService.executeSQL(
           this.queryName,
@@ -561,7 +583,7 @@ export class ConnectFormComponent implements OnInit {
   setFields(metadata: Metadata): void {
     if (this.selectedDatabaseType === 'mongodb') {
       this.setFieldsForMongoDB(metadata);
-    } else if (this.selectedDatabaseType === 'postgresql') {
+    } else if (this.selectedDatabaseType === 'postgresql' || 'mysql') {
       this.setFieldsForPostgreSQL(metadata);
     } else {
       console.error('Invalid database type selected.');
@@ -638,6 +660,7 @@ export class ConnectFormComponent implements OnInit {
         const columnData = table[column];
         const columnType =
           this.sharedDatabasesService.getColumnType(columnData);
+        console.log(columnType);
         const field: Field = {
           name: column,
           type: this.databaseService.mapPostgresTypeToQueryBuilderType(
@@ -671,7 +694,8 @@ export class ConnectFormComponent implements OnInit {
           (this.selectedDatabaseType === 'mongodb' &&
             this.databaseService.getCollectionTypeValue(columnType) ===
               'number') ||
-          (this.selectedDatabaseType === 'postgresql' &&
+          this.selectedDatabaseType === 'postgresql' ||
+          ('mysql' &&
             this.databaseService.mapPostgresTypeToQueryBuilderType(
               columnType
             ) === 'number');
@@ -685,19 +709,17 @@ export class ConnectFormComponent implements OnInit {
     return numberColumnNames;
   }
 
-  getColumnValues(columnType: any): any[] {
+  getColumnValues(column: any): any[] {
     let values: any[] = [];
-
-    if (Array.isArray(columnType)) {
-      values = columnType.length > 0 ? columnType.slice(1) : [];
-    } else if (columnType && typeof columnType === 'object') {
-      if (columnType.hasOwnProperty('columnValues')) {
-        values = columnType.columnValues;
-      } else if (columnType.hasOwnProperty('fieldValues')) {
-        values = columnType.fieldValues;
+    if (Array.isArray(column)) {
+      values = column.length > 0 ? column.slice(1) : [];
+    } else if (column && typeof column === 'object') {
+      if (column.hasOwnProperty('columnValues')) {
+        values = column.columnValues;
+      } else if (column.hasOwnProperty('fieldValues')) {
+        values = column.fieldValues;
       }
     }
-    // Remove duplicates by using a Set
     return [...new Set(values)];
   }
   fillConnectionForm(database: any) {
@@ -719,11 +741,11 @@ export class ConnectFormComponent implements OnInit {
     const existingChart = Chart.getChart(canvas);
 
     if (buttonNumber === 1) {
-      this.isPieButtonActivated = !this.isPieButtonActivated;
-      this.isLineButtonActivated = false;
+      this.pieButton = !this.pieButton;
+      this.lineButton = !this.pieButton;
     } else if (buttonNumber === 2) {
-      this.isLineButtonActivated = !this.isLineButtonActivated;
-      this.isPieButtonActivated = false;
+      this.lineButton = !this.lineButton;
+      this.pieButton = !this.lineButton;
     }
 
     if (existingChart) {

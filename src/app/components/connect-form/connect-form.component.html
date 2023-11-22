@@ -17,6 +17,7 @@
               <option value="">-- Select a database type --</option>
               <option value="mongodb">MongoDB</option>
               <option value="postgresql">PostgreSQL</option>
+              <option value="mysql">Mysql</option>
             </select>
             <label>
               Database Name:
@@ -121,7 +122,7 @@
                     <li class="nav-item mr-2 mr-md-0">
                       <button
                         class="type-chart-button"
-                        [class.activated]="isLineButtonActivated"
+                        [class.activated]="lineButton"
                         (click)="toggleButtonActivation(2)"
                       >
                         <img
@@ -135,7 +136,7 @@
                     <li class="nav-item">
                       <button
                         class="type-chart-button"
-                        [class.activated]="isPieButtonActivated"
+                        [class.activated]="pieButton"
                         (click)="toggleButtonActivation(1)"
                       >
                         <img
@@ -171,8 +172,17 @@
                 <div class="col">
                   <h3 class="mb-0">Database content</h3>
                 </div>
+                <div class="col-auto">
+                  <button
+                    class="btn btn-danger"
+                    (click)="disconnectFromDatabase(url)"
+                  >
+                    Disconnect
+                  </button>
+                </div>
               </div>
             </div>
+
             <div class="table-wrapper">
               <table
                 *ngIf="result"
@@ -195,6 +205,7 @@
                       <tr>
                         <td>{{ tableName }}</td>
                         <td>{{ columnName }}</td>
+
                         <td>
                           <div class="input-group">
                             <select class="custom-select">
@@ -247,12 +258,17 @@
                     <th>Name</th>
                     <th>Conditions</th>
                     <th>Database Name</th>
-                    <th>Database URL</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr scope="row" *ngFor="let item of filteredData">
+                  <tr
+                    scope="row"
+                    *ngFor="let item of filteredData"
+                    style="transition: background-color 0.3s ease-in-out"
+                    onmouseover="this.style.backgroundColor='#e1e3e6';"
+                    onmouseout="this.style.backgroundColor='';"
+                  >
                     <td
                       (click)="
                         createQueryBuildersFromQueries(
@@ -271,7 +287,7 @@
                         )
                       "
                     >
-                      {{ item.conditions | slice : 0 : 15 }}
+                      {{ item.conditions | slice : 0 : 90 }}
                     </td>
                     <td
                       (click)="
@@ -283,22 +299,22 @@
                     >
                       {{ item.database.databaseName }}
                     </td>
-                    <td
-                      (click)="
-                        createQueryBuildersFromQueries(
-                          item.conditions,
-                          item.name
-                        )
-                      "
-                    >
-                      <a class="disabled" href="{{ item.database.url }}"
-                        >Database url de {{ item.name }}</a
-                      >
-                    </td>
+
                     <td>
-                      <button (click)="onDeleteQuery(item.id)">
-                        Delete Query
-                      </button>
+                      <div class="testt">
+                        <img
+                          src="assets/Cross1.svg"
+                          height="30"
+                          width="30"
+                          (click)="onDeleteQuery(item.id)"
+                          style="
+                            transform: scale(1.5);
+                            transition: transform 0.3s ease-in-out;
+                          "
+                          onmouseover="this.style.transform='scale(1.8)'"
+                          onmouseout="this.style.transform='scale(1.5)'"
+                        />
+                      </div>
                     </td>
                   </tr>
                 </tbody>
@@ -323,7 +339,11 @@
 
           <div *ngFor="let queryBuilder of queryBuilders; let i = index">
             <div *ngIf="queryBuilder.config">
-              <button class="btn btn-danger" (click)="removeQueryBuilder(i)">
+              <button
+                class="btn btn-outline-danger btn-sm"
+                (click)="removeQueryBuilder(i)"
+                style="margin-top: 5px; margin-bottom: 5px"
+              >
                 Remove
               </button>
               <query-builder
@@ -341,35 +361,41 @@
           </div>
         </div>
         <button
-          class="btn btn-primary"
+          class="btn btn-primary btn-sm"
           style="display: inline"
           (click)="addQueryBuilder()"
         >
-          Add Query Builder
+          Add query builder
         </button>
-        <div *ngIf="queryBuilders.length != 0">
-          <br />
-          <button class="btn btn-primary" (click)="executeQueryBuilder()">
-            Execute Query
-          </button>
-        </div>
+
         <div *ngIf="queryBuilders.length != 0">
           <div class="container">
             <div
               *ngFor="let yAxisArray of yAxisColumnNamesArrays; let i = index"
             >
-              <label for="yAxisInput{{ i }}"
-                >Y-Axis Column Name {{ i + 1 }}:
-                <div *ngIf="!isPieButtonActivated">
+              <label
+                for="yAxisInput{{ i }}"
+                style="display: flex; align-items: center"
+              >
+                Y-Axis Column Name {{ i + 1 }}:
+                <div *ngIf="!pieButton" style="margin-left: 10px">
                   <button
-                    class="btn btn-success"
+                    class="btn btn-success btn-sm"
                     *ngIf="i === 0"
                     (click)="addYAxisInput()"
                   >
                     +
                   </button>
-                </div></label
-              >
+                  <button
+                    class="btn btn-danger btn-sm"
+                    *ngIf="i > 0"
+                    (click)="removeYAxisInput(i)"
+                  >
+                    -
+                  </button>
+                </div>
+              </label>
+
               <select [(ngModel)]="yAxisArray[0]" id="yAxisInput{{ i }}">
                 <ng-container *ngIf="result">
                   <ng-container
@@ -381,18 +407,10 @@
                   </ng-container>
                 </ng-container>
               </select>
-
-              <button
-                class="btn btn-primary"
-                *ngIf="i > 0"
-                (click)="removeYAxisInput(i)"
-              >
-                -
-              </button>
             </div>
 
             <div *ngIf="result">
-              <div *ngIf="!isPieButtonActivated">
+              <div *ngIf="!pieButton">
                 <label for="xAxisInput">X-Axis Column Name:</label>
                 <select [(ngModel)]="xAxisColumnName">
                   <ng-container *ngIf="result">
@@ -408,11 +426,17 @@
               </div>
             </div>
             <div *ngIf="error" class="error">{{ error }}</div>
+            <div *ngIf="queryBuilders.length != 0">
+              <br />
+              <button
+                class="btn btn-primary btn-sm"
+                (click)="executeQueryBuilder()"
+              >
+                Execute Query
+              </button>
+            </div>
           </div>
         </div>
-        <button class="btn btn-danger" (click)="disconnectFromDatabase(url)">
-          Disconnect
-        </button>
       </div>
     </div>
   </div>
